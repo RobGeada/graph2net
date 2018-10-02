@@ -50,5 +50,10 @@ Alternatively, we can just generate some random matrices and see what cells they
 ![RandBlock2](https://github.com/RobGeada/graph2net/blob/master/images/randblock2.png)
 ![RandBlock3](https://github.com/RobGeada/graph2net/blob/master/images/randblock3.png)
 
-## Use
-See the notebook for usage
+## Usage
+See the notebook for usage.
+
+## Future Plans
+* Testing of random cell networks
+* Conversion to CUDA
+* Evolution of cell matrices to find more optimal networks
