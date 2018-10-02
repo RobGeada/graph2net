@@ -36,6 +36,10 @@ It is important to ensure that tensor sizes remain compatible as data flows thro
 * Any connection to cell output halves the spatial dimensions via a stride-2 operation.
 * If neccesary, 1x1 convolutions are added to an edge to ensure input and output channel sizes match.
 
+These rules ensure two criteria:
+1) All possible cell matrices correspond to valid, trainable cells.
+2) All cells will increase in channel count and decrease in spatial dimensionality.
+
 ## Cell Matrix Examples
 Thus, a simple VGGBlock can be loosely specified by:
 
