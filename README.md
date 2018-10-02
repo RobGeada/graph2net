@@ -19,7 +19,7 @@ The cell matrix is a connectivity matrix, specifying what kind of operation conn
 12) Depthwise Separable Convolution_5x5
 13) Depthwise Separable Convolution_7x7
 
-Cell matrices must be strictly upper triangular, this prevents recursion. Node 0 is the cell input, whereas the final node corresponds to cell output. Therefore, any connection in the first row of the cell matrix indicates the selected node receieves cell input, wheras any value in the final column of the cell matrix indicates the node sends its output to the cell output. See below for some examples.
+Cell matrices must be *strictly upper triangular*, as this prevents recursion. Node 0 is the cell input, whereas the final node corresponds to cell output. Therefore, any connection in the first row of the cell matrix indicates the selected node receieves cell input, wheras any value in the final column of the cell matrix indicates the node sends its output to the cell output. See below for some examples.
 
 ## Cell Matrix Examples
 Thus, a simple VGGBlock can be loosely specified by:
