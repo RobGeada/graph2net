@@ -22,12 +22,12 @@ The cell matrix is a connectivity matrix, specifying what kind of operation conn
 ### Examples
 Thus, a simple VGGBlock can be loosely specified by:
 
-|i_0|i_1|i_2|i_3|
-|-|-|-|-|
-| 0 | 10 | 0  | 0 |
-| 0 | 0  | 10 | 0 |
-| 0 | 0  | 0  | 3 |
-| 0 | 0  | 0  | 0 |
+||i_0|i_1|i_2|i_3|
+|-|-|-|-|-|
+| j_0 | 0 | 10 | 0  | 0 |
+| j_1 | 0 | 0  | 10 | 0 |
+| j_2 | 0 | 0  | 0  | 3 |
+| j_3 | 0 | 0  | 0  | 0 |
 
 ![VGGBlock](https://github.com/RobGeada/graph2net/blob/master/images/vggblock.png)
 
