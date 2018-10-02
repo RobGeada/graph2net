@@ -2,7 +2,7 @@
 
 A notebook for building models via stacking of convolutional cells. The architecture of each cell can specified by a connectivity matrix, thus reducing the problem of network design to that of simply designing a connectivity matrix.
 
-### The Cell Matrix
+## The Cell Matrix
 The cell matrix is a connectivity matrix, specifying what kind of operation connects node *i* to node *j*. Available operations derive from the [NASNet Search Space](https://arxiv.org/pdf/1707.07012.pdf) and are specified via index, as follows:
 0) zero
 1) identity
@@ -19,7 +19,7 @@ The cell matrix is a connectivity matrix, specifying what kind of operation conn
 12) Depthwise Separable Convolution_5x5
 13) Depthwise Separable Convolution_7x7
 
-### Examples
+## Cell Matrix Examples
 Thus, a simple VGGBlock can be loosely specified by:
 
 ||node0|node1|node2|node3|
@@ -42,6 +42,7 @@ A single ResBlock can be loosely specified by:
 
 ![ResBlock](https://github.com/RobGeada/graph2net/blob/master/images/resblock.png)
 
+## Random Networks
 Alternatively, we can just generate some random matrices and see what networks they generate:
 ![RandBlock1](https://github.com/RobGeada/graph2net/blob/master/images/randblock1.png)
 ![RandBlock2](https://github.com/RobGeada/graph2net/blob/master/images/randblock2.png)
