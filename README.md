@@ -24,10 +24,10 @@ Thus, a simple VGGBlock can be loosely specified by:
 
 ||j0|j1|j2|j3|
 |-|-|-|-|-|
-| *i0* | 0 | 10 | 0  | 0 |
-| *i1* | 0 | 0  | 10 | 0 |
-| *i2* | 0 | 0  | 0  | 3 |
-| *i3* | 0 | 0  | 0  | 0 |
+| **i0** | 0 | 10 | 0  | 0 |
+| **i1** | 0 | 0  | 10 | 0 |
+| **i2** | 0 | 0  | 0  | 3 |
+| **i3** | 0 | 0  | 0  | 0 |
 
 ![VGGBlock](https://github.com/RobGeada/graph2net/blob/master/images/vggblock.png)
 
