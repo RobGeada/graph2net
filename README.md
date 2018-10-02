@@ -21,17 +21,17 @@ The cell matrix is a connectivity matrix, specifying what kind of operation conn
 
 ### Examples
 Thus, a simple VGGBlock can be loosely specified by:
-[[0, 10,  0,  0],
-[0,  0,  10,  0],
-[0,  0,  0.,  3],
-[0,  0,  0.,  0]]
+| 0 | 10 | 0  | 0 |
+| 0 | 0  | 10 | 0 |
+| 0 | 0  | 0  | 3 |
+| 0 | 0  | 0  | 0 |
 ![VGGBlock](https://github.com/RobGeada/graph2net/blob/master/images/vggblock.png)
 
 Thus, a single ResBlock can be loosely specified by:
-[[0, 11,  1.,  0],
-[0,  0,  1.,  0],
-[0,  0,  0.,  3],
-[0,  0,  0.,  0]]
+| 0 | 11 | 1  | 0 |
+| 0 | 0  | 11 | 0 |
+| 0 | 0  | 0  | 3 |
+| 0 | 0  | 0  | 0 |
 or 
 ![ResBlock](https://github.com/RobGeada/graph2net/blob/master/images/resblock.png)
 
