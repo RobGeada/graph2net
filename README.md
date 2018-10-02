@@ -6,7 +6,7 @@ A notebook for building models via stacking of convolutional cells. The architec
 A connection between two nodes. An edge receives input from its origin node, transforms it via an operation, and sends this transformed output to its target node.
 
 ## Graph Nodes
-A node receieve tensors from its incoming edges,  joins these tensors via elementwise-summation, and then passes these sums along their outgoing edges.
+A node receieve tensors from its incoming edges,  joins these tensors via element-wise summation, and then passes these sums along their outgoing edges.
 
 ## Graph Cells
 A graph of nodes and edges, defined by a cell matrix.
