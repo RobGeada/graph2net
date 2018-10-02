@@ -33,12 +33,12 @@ Thus, a simple VGGBlock can be loosely specified by:
 
 A single ResBlock can be loosely specified by:
 
-| | | | |
-|-|-|-|-|
-| 0 | 11 | 1  | 0 |
-| 0 | 0  | 11 | 0 |
-| 0 | 0  | 0  | 3 |
-| 0 | 0  | 0  | 0 |
+||node0|node1|node2|node3|
+|-|-|-|-|-|
+| **node0** | 0 | 11 | 1  | 0 |
+| **node1** | 0 | 0  | 1  | 0 |
+| **node2** | 0 | 0  | 0  | 3 |
+| **node3** | 0 | 0  | 0  | 0 |
 
 ![ResBlock](https://github.com/RobGeada/graph2net/blob/master/images/resblock.png)
 
