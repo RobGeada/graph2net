@@ -13,6 +13,7 @@ A graph of nodes and edges, defined by a cell matrix.
 
 ## The Cell Matrix
 The cell matrix is a connectivity matrix, specifying what kind of operation connects node *i* to node *j*. Available operations derive from the [NASNet Search Space](https://arxiv.org/pdf/1707.07012.pdf) and are specified via index, as follows:
+
 0) zero
 1) identity
 2) 3x3 average pooling
