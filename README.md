@@ -43,7 +43,10 @@ A single ResBlock can be loosely specified by:
 ![ResBlock](https://github.com/RobGeada/graph2net/blob/master/images/resblock.png)
 
 ## Random Networks
-Alternatively, we can just generate some random matrices and see what networks they generate:
+Alternatively, we can just generate some random matrices and see what cells they generate:
 ![RandBlock1](https://github.com/RobGeada/graph2net/blob/master/images/randblock1.png)
 ![RandBlock2](https://github.com/RobGeada/graph2net/blob/master/images/randblock2.png)
 ![RandBlock3](https://github.com/RobGeada/graph2net/blob/master/images/randblock3.png)
+
+## Use
+See the notebook for usage
