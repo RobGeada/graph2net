@@ -29,7 +29,7 @@ The cell matrix is a connectivity matrix, specifying what kind of operation conn
 12) Depthwise Separable Convolution_5x5
 13) Depthwise Separable Convolution_7x7
 
-Nodes. Cell matrices must be *strictly upper triangular*, thus corresponding to a DAG and preventing recursive behavior. Node 0 is the cell input, whereas the final node corresponds to cell output. Therefore, any connection in the first row of the cell matrix indicates the selected node receieves cell input, wheras any value in the final column of the cell matrix indicates the node sends its output to the cell output. See below for some examples.
+Cell matrices must be *strictly upper triangular*, thus corresponding to a DAG and preventing recursive behavior. Node 0 is the cell input, whereas the final node corresponds to cell output. Therefore, any connection in the first row of the cell matrix indicates the selected node receieves cell input, wheras any value in the final column of the cell matrix indicates the node sends its output to the cell output. See below for some examples.
 
 ## Cell Rules
 It is important to ensure that tensor sizes remain compatible as data flows through cells. Thus, as cell matrices are turned into cells, the following rules apply:
