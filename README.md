@@ -50,6 +50,11 @@ Alternatively, we can just generate some random matrices and see what cells they
 ![RandBlock2](https://github.com/RobGeada/graph2net/blob/master/images/randblock2.png)
 ![RandBlock3](https://github.com/RobGeada/graph2net/blob/master/images/randblock3.png)
 
+## Cell Rules
+To ensure compatibility of tensors and that cells scale data correctly, the following rules are implemented:
+* Any connection from cell input doubles the number of channels via 1x1 convolutions
+* Any connection to cell output halves the spatial dimensions via a stride-2 operation
+
 ## Usage
 See the notebook for usage.
 
