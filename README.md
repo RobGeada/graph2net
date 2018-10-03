@@ -42,7 +42,7 @@ These rules ensure two criteria:
 2) All cells will increase in channel count and decrease in spatial dimensionality.
 
 ## Cell Matrix Examples
-Thus, a simple VGGBlock can be loosely specified by:
+Thus, a simple VGG-esque cell can be loosely specified by:
 
 ||node0|node1|node2|node3|
 |-|-|-|-|-|
@@ -53,7 +53,7 @@ Thus, a simple VGGBlock can be loosely specified by:
 
 ![VGGBlock](https://github.com/RobGeada/graph2net/blob/master/images/vggblock.png)
 
-A single ResBlock can be loosely specified by:
+A single ResNet cell can be loosely specified by:
 
 ||node0|node1|node2|node3|
 |-|-|-|-|-|
