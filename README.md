@@ -36,6 +36,7 @@ It is important to ensure that tensor sizes remain compatible as data flows thro
 * Any connection from cell input doubles the number of channels via 1x1 convolutions.
 * Any connection to cell output halves the spatial dimensions via a stride-2 operation.
 * If neccesary, 1x1 convolutions are added to an edge to ensure input and output channel sizes match.
+* To preserve the connectivity matrix abstraction, two nodes may only have one direct connection between them. To work around this, add an intermediate node between the two connections: i.e.,if two connections between Node A to Node B are desired, have one connection from A->B, then the other via an intermediate node C: A->C->B. See the ResNet example below as a practical example of this.
 
 These rules ensure two criteria:
 1) All possible cell matrices correspond to valid, trainable cells.
