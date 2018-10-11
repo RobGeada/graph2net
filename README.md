@@ -1,6 +1,6 @@
 # graph2net
 
-A notebook for building models via connectivity matrices. Reduces the problem of network design to simply specifying a connectivity matrix!
+Tools for building models via connectivity matrices, reducing the problem of network design to simply specifying connectivity matrices!
 
 ## Usage
 See the [Graph2Net Demo](https://github.com/RobGeada/graph2net/blob/master/Graph2Net%20Demo.ipynb) for usage.
