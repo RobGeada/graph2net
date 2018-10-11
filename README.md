@@ -1,6 +1,6 @@
 # graph2net
 
-A notebook for building models via stacking of convolutional cells. The architecture of each cell can specified by a connectivity matrix, thus reducing the problem of network design to that of simply designing a connectivity matrix.
+A notebook for building models via connectivity matrices. Reduces the problem of network design to simply specifying a connectivity matrix!
 
 ## Usage
 See the [Graph2Net Demo](https://github.com/RobGeada/graph2net/blob/master/Graph2Net%20Demo.ipynb) for usage.
