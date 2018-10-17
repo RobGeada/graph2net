@@ -1,9 +1,7 @@
 import matplotlib.pyplot as plt
 import networkx as nx
 from networkx.drawing.nx_agraph import graphviz_layout
-import numpy as np
 
-from graph2net.net import Net
 from graph2net.ops import *
 
 def gen_cell(nodes,connectivity):
