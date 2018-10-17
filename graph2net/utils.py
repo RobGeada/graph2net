@@ -128,7 +128,7 @@ def model_validate(model,train_loader,verbose):
         train(model,device, train_loader, criterion, optimizer, epoch=0, validate=True,verbose=True)
 
 #generate and display model, then validate that it runs correctly 
-def gen_and_validate(cell,name,cell_count=None,verbose=True,keep_model=True):
+def gen_and_validate(cell,name="Validating Network",cell_count=None,verbose=True,keep_model=True):
     train_loader,test_loader,data_shape,classes=load_data(verbose=False)
     if verbose: print(cell)
     if verbose: show_matrix(cell,name)

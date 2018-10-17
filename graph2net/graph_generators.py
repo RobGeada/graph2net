@@ -6,14 +6,14 @@ import numpy as np
 from graph2net.net import Net
 from graph2net.ops import *
 
-def gen_cell(nodes,sparsity_thresh):
+def gen_cell(nodes,connectivity):
     #generate random cell matrix with $nodes nodes
     #connects node_i to node_j with probabilty $sparsity thresh
     nn = np.zeros((nodes,nodes))
     for i in range(nodes):
         for j in range(nodes):
             if j>i:
-                num = np.random.randint(1,13) if np.random.rand() > sparsity_thresh else 0
+                num = np.random.randint(1,13) if np.random.rand() < connectivity else 0
                 nn[i,j]=num
             if j>0 and i==nodes-1 and all(nn[:,j]==0):
                 nn[0,j]=1
