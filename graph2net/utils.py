@@ -163,7 +163,8 @@ def gen_and_validate(cell, name="Validating Network", cell_count=None, verbose=T
     # initialize and display model
     cell_count = math.floor(math.log(32, 2)) if cell_count is None else cell_count
     model = Net(cells=cell_count, matrix=cell, in_dim=data_shape, classes=classes)
-    model = model.cuda()
+    if torch.cuda.is_available():
+        model = model.cuda()
     scales = model.get_cell_upscale()[-1]
     params = model.get_num_params()
 
