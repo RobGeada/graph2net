@@ -7,53 +7,12 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
-from torchvision import datasets, transforms
 
 from graph2net.graph_generators import show_matrix
 from graph2net.net import Net
 
 
-def load_data(verbose=False):
-    batch_size = 256
-    image_shape = [32, 32]
-    color_channels = 3
-    powers = [(2 ** x) * color_channels for x in range(3, 20)]
-    if verbose: print("Channel Progression:", powers)
-    data_shape = [batch_size, color_channels] + image_shape
-    classes = 10
-    if verbose: print("Data shape:", data_shape)
-    if verbose: print("Classes:   ", classes)
-
-    train_data = datasets.CIFAR10('data10',
-                                  train=True,
-                                  download=True,
-                                  transform=transforms.Compose([
-                                      transforms.Resize(image_shape),
-                                      transforms.ToTensor(),
-                                      transforms.Normalize((0,), (1,))]
-                                  ))
-    test_data = datasets.CIFAR10('data10',
-                                 train=False,
-                                 download=True,
-                                 transform=transforms.Compose([
-                                     transforms.Resize(image_shape),
-                                     transforms.ToTensor(),
-                                     transforms.Normalize((0,), (1,))]
-                                 ))
-
-    train_loader = torch.utils.data.DataLoader(train_data,
-                                               batch_size=batch_size,
-                                               shuffle=True)
-    test_loader = torch.utils.data.DataLoader(test_data,
-                                              batch_size=batch_size,
-                                              shuffle=False)
-
-    batches = len(train_loader)
-    if verbose:  print("Factors of", batches, "batches: ", [x for x in range(1, batches) if (batches / x) % 1 == 0])
-
-    return train_loader, test_loader, data_shape, classes
-
-
+# === EPOCH LEVEL FUNCTIONS ============================================================================================
 def adjust_lr(optimizer, by=None, set_to=None):
     for param_group in optimizer.param_groups:
         if set_to is not None:
@@ -65,7 +24,7 @@ def adjust_lr(optimizer, by=None, set_to=None):
     return curr_lr
 
 
-# single epoch train function
+# === BASE LEVEL TRAIN AND TEST FUNCTIONS===============================================================================
 def train(model, device, train_loader, criterion, optimizer, epoch, validate=False, verbose=False):
     if not validate: print()
     ims = []
@@ -89,7 +48,6 @@ def train(model, device, train_loader, criterion, optimizer, epoch, validate=Fal
     print()
 
 
-# single epoch validation function
 def test(model, device, test_loader):
     model.eval()
     test_loss = 0
@@ -108,55 +66,21 @@ def test(model, device, test_loader):
     print('\nTest Loss', test_loss, 'Corrects', corrects, "/", len(test_loader.dataset))
     return test_loss
 
-
-# run n epochs of the training and validation
-def full_model_run(model, **kwargs):
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    train_loader, test_loader, data_shape, classes = load_data()
-    losses = []
-    optimizer = optim.SGD(model.parameters(),
-                          lr=kwargs['lr'],
-                          momentum=kwargs['momentum'],
-                          weight_decay=kwargs['weight_decay'])
-    criterion = nn.CrossEntropyLoss()
-
-    for epoch in range(kwargs['epochs']):
-        t_start = time()
-        train(model, device, train_loader, criterion, optimizer, epoch)
-        print("Epoch Time:", time() - t_start)
-        losses.append(test(model, device, test_loader))
-
-        if epoch % 10 == 0 and epochs>0:
-            adjust_lr(optimizer, by=.1)
-    return -min(losses)
-
-
+# === MODEL VALIDATION= ================================================================================================
 # run a single batch through the model and perform a single optimization step, just to make sure everything works ok
 def model_validate(model, train_loader, verbose):
     print("Validating model...", end="")
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    lr = .05
-    momentum = .9
-    losses = []
     optimizer = optim.SGD(model.parameters(), lr=.025, momentum=.9, weight_decay=3e-4)
     criterion = nn.CrossEntropyLoss()
 
-    if 1:  # try:
-        valid = train(model, device, train_loader, criterion, optimizer, epoch=0, validate=True, verbose=False)
-        print("[SUCCESS]")
-    '''
-    #except KeyboardInterrupt:
-        raise
-    except:
-        print("\n{} ERROR: PRINTING MODEL DEBUGGING {}".format(eq_string(50),eq_string(50)))
-        print(model)
-        show_matrix(model.matrix,"Failed Model")
-        train(model,device, train_loader, criterion, optimizer, epoch=0, validate=True,verbose=True)
-    '''
+    train(model, device, train_loader , criterion, optimizer, epoch=0, validate=True, verbose=False)
+    print("[SUCCESS]")
+
 
 # generate and display model, then validate that it runs correctly
-def gen_and_validate(cell, name="Validating Network", cell_count=None, verbose=True, keep_model=True):
-    train_loader, test_loader, data_shape, classes = load_data(verbose=False)
+def gen_and_validate(cell, name="Validating Network", data=None,cell_count=None, verbose=True, keep_model=True):
+    train_loader, test_loader, data_shape, classes = data
     if verbose: print(cell)
     if verbose: show_matrix(cell, name)
 
@@ -179,7 +103,26 @@ def gen_and_validate(cell, name="Validating Network", cell_count=None, verbose=T
     # validate
     model_validate(model, train_loader, verbose=verbose)
 
-    if keep_model:
-        return model
-    else:
-        return params
+    return model if keep_model else params
+
+# === TOP LEVEL TRAINING FUNCTION ======================================================================================
+# run n epochs of the training and validation
+def full_model_run(model, **kwargs):
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    train_loader, test_loader, data_shape, classes = kwargs['data']
+    losses = []
+    optimizer = optim.SGD(model.parameters(),
+                          lr=kwargs['lr'],
+                          momentum=kwargs['momentum'],
+                          weight_decay=kwargs['weight_decay'])
+    criterion = nn.CrossEntropyLoss()
+
+    for epoch in range(kwargs['epochs']):
+        t_start = time()
+        train(model, device, train_loader, criterion, optimizer, epoch)
+        print("Epoch Time:", time() - t_start)
+        losses.append(test(model, device, test_loader))
+
+        if epoch in kwargs['lr_schedule']:
+            adjust_lr(optimizer, by=.1)
+    return -min(losses)
