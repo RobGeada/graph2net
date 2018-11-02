@@ -1,7 +1,5 @@
-import matplotlib.pyplot as plt
 import networkx as nx
 from networkx.drawing.nx_agraph import graphviz_layout
-
 from graph2net.ops import *
 
 
@@ -12,7 +10,7 @@ def gen_cell(nodes, connectivity):
     for i in range(nodes):
         for j in range(nodes):
             if j > i:
-                num = np.random.randint(1, 13) if np.random.rand() < connectivity else 0
+                num = np.random.randint(1, len(idx_to_op)) if np.random.rand() < connectivity else 0
                 nn[i, j] = num
             if j > 0 and i == nodes - 1 and all(nn[:, j] == 0):
                 nn[0, j] = 1
@@ -21,7 +19,20 @@ def gen_cell(nodes, connectivity):
     return nn
 
 
-def build_matrix(pairs):
+def cell_stats(cell):
+    nonzeros = 0
+    possible_cnx = 0
+    nodes = cell.shape[0]
+    for i in range(nodes):
+        for j in range(nodes):
+            if j > i:
+                possible_cnx += 1
+                if cell[i][j] != 0:
+                    nonzeros += 1
+    print("Nodes: {}, Connectivity: {}".format(nodes,nonzeros/possible_cnx))
+
+
+def build_cell(pairs):
     # build cell matrix from connectivity pairs
     # input [(0,1,3),(1,2,4)] means node0->node1 via op 3, node1->node2 via op4, etc
 
@@ -35,14 +46,14 @@ def build_matrix(pairs):
     return matrix
 
 
-def show_matrix(matrix, name):
+def show_cell(cell, name='Cell'):
     # plot cell DAG
     g = nx.DiGraph()
-    for origin, target in zip(*matrix.nonzero()):
-        g.add_edge(origin, target, function=idx_to_op[int(matrix[origin, target])])
+    for origin, target in zip(*cell.nonzero()):
+        g.add_edge(origin, target, function=idx_to_op[int(cell[origin, target])])
     pos = graphviz_layout(g, prog='dot')
 
-    size = matrix.shape[0]
+    size = cell.shape[0]
     plt.figure(figsize=(size * 1.5, size * 1.5))
     nx.draw_networkx(g, pos)
     edge_labels = nx.get_edge_attributes(g, 'function')
@@ -51,26 +62,27 @@ def show_matrix(matrix, name):
     plt.show()
 
 
-def stack_matrix(matrix, cells):
-    dim = matrix.shape[0]
-    out = np.zeros([dim * cells - 1] * 2)
-    for cell in range(cells):
+def stack_cells(cell, count):
+    dim = cell.shape[0]
+    out = np.zeros([dim * count - 1] * 2)
+    for cell in range(count):
         shift = 0 if cell == 0 else 1
         a, b = cell * (dim - shift), cell * (dim - shift) + dim
-        out[a:b, a:b] = matrix
+        out[a:b, a:b] = cell
     return out
 
 
-def cubify(matrix):
+def cubify(cell):
     # one hot each element in cell matrix (returns matrix of shape [n_nodes,n_nodes,n_ops])
     out = []
     ops = len(idx_to_op) - 1
-    for i in range(matrix.shape[0]):
-        for j in range(matrix.shape[1]):
+    for i in range(cell.shape[0]):
+        for j in range(cell.shape[1]):
             if j > i:
                 row = np.zeros(ops)
-                op = int(matrix[i, j])
+                op = int(cell[i, j])
                 if op != 0:
                     row[op - 1] = 1
                 out += list(row)
     return np.array(out)
+

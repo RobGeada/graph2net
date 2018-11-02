@@ -1,8 +1,6 @@
 from graph2net.ops import *
 from graph2net.helpers import *
 
-powers = [(2 ** x) * 3 for x in range(3, 20)]
-
 
 class Node(nn.Module):
     def __init__(self, name, dim=None):
@@ -14,10 +12,16 @@ class Node(nn.Module):
 
         # node connections
         self.cnx = []
+        self.target_names_set = set([])
+        self.target_names_list = []
+        self.num_targets = 0
+        self.previous_names = set([])
         self.ins = []
         self.out = None
 
-    def add_cnx(self, cnx, o_pos, t_pos, cell_type):
+    def add_cnx(self, cnx, o_pos, t_pos, cell_type, scale):
+        powers = [(2 ** x) * 3 for x in range(scale, 20)]
+
         # ===DIMENSION MODIFICATION======================================
         in_channels = self.dim[1]
 
@@ -64,7 +68,7 @@ class Node(nn.Module):
 
         # ===SANITY CHECKING=============================================
         # make sure tensors are of right dimensionality
-        if cnx.target.dim == None or cnx.target.dim == cnx.out_dim:
+        if not cnx.target.dim or cnx.target.dim == cnx.out_dim:
             cnx.target.dim = cnx.out_dim
         else:
             raise ValueError("Dimension mismatch from {} to {}: Target Dim {} vs Edge Dim {}".format(
@@ -74,14 +78,14 @@ class Node(nn.Module):
                 cnx.out_dim))
 
         self.cnx.append(cnx)
+        self.target_names_set.add(cnx.target.name)
+        self.target_names_list.append(cnx.target.name)
+        self.num_targets += 1
 
-    def forward(self, x=None, verbose=False):
+    def forward(self, x=None, node_cnx={},verbose=False):
         # if cell connects to first node, pass in input
         if not self.ins:
             self.ins = [x]
-
-        if verbose: print("=== Node ", self.name, "===")
-        if verbose: print("Node Inputs:", [x.shape for x in self.ins])
 
         # add all input tensors together
         self.out = sum(self.ins)
@@ -90,12 +94,19 @@ class Node(nn.Module):
         self.ins = []
 
         # pass data through subsequent connections and set node output
-        for cnx in self.cnx:
-            if verbose: print("{}->{} via {}: {}->".format(self.name, cnx.target.name, cnx.op, self.out.shape), end="")
-            cnx.out = cnx(self.out)
-            cnx.target.ins.append(cnx.out)
-            if verbose: print("{}".format(cnx.out.shape))
-        return self.out
+        if not node_cnx:
+            for cnx in self.cnx:
+                cnx.out = cnx(self.out)
+                cnx.target.ins.append(cnx.out)
+            return self.out
+        else:
+            name = self.name
+            for cnx in self.cnx:
+                if node_cnx.get(name, cnx.target_name):
+                    cnx.out = cnx(self.out)
+                else:
+                    cnx.out = cnx(self.out, zero=True)
+                cnx.target.ins.append(cnx.out)
 
     def __repr__(self):
         out = ""
