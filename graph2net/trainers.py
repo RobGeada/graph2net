@@ -226,10 +226,12 @@ def full_model_run(model, **kwargs):
                 print("Per epoch time:     {}".format(show_time(mean_epoch_time)))
                 print("Est remaining time: {}".format(show_time((kwargs['epochs']-epoch)*mean_epoch_time)))
 
-            if kwargs.get('track_progress',False):
-                print(kwargs['prefix']+" "+progress_bar(epoch+1,kwargs['epochs']),end="\r")
+            loss, correct = test(model, device, test_loader, verbose=kwargs.get('verbose',False))
 
-            loss, correct = test(model, device, test_loader,verbose=kwargs.get('verbose',False))
+            if kwargs.get('track_progress',False):
+                correct_perc = "{:005.2f}%) ".format(correct/len(test_loader.dataset)*100)
+                print(kwargs['prefix']+correct_perc+progress_bar(epoch+1,kwargs['epochs']),end="\r")
+
             losses.append(loss)
             corrects.append(correct)
 

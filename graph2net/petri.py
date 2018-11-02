@@ -40,21 +40,21 @@ def create_gene_pool(size, node_range, connectivity_range,inclusions=[]):
 def run_petri(df, **kwargs):
     previous_score, best_score = 0, 0
     for index, cell in df.iterrows():
+        best_score = int(cell['correct']) if int(cell['correct'])>best_score else best_score
         if not cell['adult']:
             start_t = time()
 
-            prefix = "Incubating Cell {}: {}, m: {}, id: {} (previous: {:.2f}%, best: {:.2f}%)".format(
+            prefix = "Incubating Cell {}: {}, m: {}, id: {} (best: {:005.2f}%, current: ".format(
                 index,
                 cell['genotype'],
                 cell['mutations'],
                 cell['name'],
-                previous_score / len(kwargs['data'][1].dataset),
-                best_score / len(kwargs['data'][1].dataset))
+                best_score / len(kwargs['data'][1].dataset)*100)
 
             if kwargs.get('verbose',True):
                 print(prefix)
             else:
-                print(prefix+" ----------", end="".join([" "]*100)+"\r")
+                print(prefix+"00.00%) ----------", end="".join([" "]*100)+"\r")
                 logging.info(prefix)
 
             model = gen_and_validate(cell_matrices=[cell['cell']],
@@ -134,12 +134,9 @@ def mutate_cell(cell,mutation_probability):
     return mutated_cell
 
 
-def mutate_pool(pool, reproduction_thresh, mutation_probability):
-    parent_count = int(len(pool) * reproduction_thresh)
-    child_count = len(pool) - parent_count
-
-    seed_pool = pool.iloc[0:parent_count]
-    seed_pool_sample = seed_pool.sample(n=child_count, replace=True)
+def mutate_pool(pool, parents, children, mutation_probability):
+    seed_pool = pool.iloc[0:parents]
+    seed_pool_sample = seed_pool.sample(n=children, replace=True)
 
     new_pool=[]
     for index, cell in seed_pool_sample.iterrows():
