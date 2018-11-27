@@ -1,8 +1,10 @@
 from graph2net.node import Node
 from graph2net.ops import *
 from graph2net.edge import Edge
+from graph2net.helpers import general_num_params
 
-from random import random
+import random
+# random.seed(7)
 
 
 class Cell(nn.Module):
@@ -58,7 +60,7 @@ class Cell(nn.Module):
                     target_names = node.target_names_list
                     cnxs = node.num_targets
                     for target in target_names:
-                        rand_val = random()
+                        rand_val = random.random()
                         if target not in preserved and rand_val > .5 and cnxs > 1:
                             cnxs -= 1
                         else:
@@ -74,4 +76,5 @@ class Cell(nn.Module):
         out = ""
         for i, node in enumerate(self.nodes):
             out += str(node)
+        out += "Cell Params: {:,}\n".format(general_num_params(self))
         return out

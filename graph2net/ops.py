@@ -1,7 +1,8 @@
-import torch
 import torch.nn as nn
-
+import torch
 from graph2net.helpers import *
+
+# torch.backends.cudnn.deterministic=True
 
 
 class Dilated_Conv(nn.Module):
