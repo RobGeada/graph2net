@@ -5,17 +5,16 @@ import pandas as pd
 from time import time
 
 from graph2net.trainers import gen_and_validate, full_model_run
-from graph2net.graph_generators import gen_cell
-from graph2net.helpers import show_time, eq_string, namer
-from graph2net.ops import idx_to_op
+from graph2net.graph_generators import gen_cell, swap_mutate
+from graph2net.helpers import show_time, namer
 
 
-def create_gene_pool(size, node_range, connectivity_range, inclusions=[]):
+def create_gene_pool(size, node_range, connectivity_range, concat, inclusions=[]):
     cells = []
     for s in range(size):
         nodes = np.random.randint(node_range[0], node_range[1])
         connectivity = np.random.uniform(connectivity_range[0], connectivity_range[1])
-        cells.append({'cell': gen_cell(nodes, connectivity),
+        cells.append({'cell': gen_cell(nodes, connectivity, concat),
                       "genotype": "n: {}, c: {:.3}".format(nodes, connectivity),
                       "mutations": 0,
                       "loss": 0.,
@@ -25,8 +24,10 @@ def create_gene_pool(size, node_range, connectivity_range, inclusions=[]):
                       "offspring": 0,
                       "lineage": [],
                       "preds": []})
+        cells[s]['type'] = "concat" if cells[s]['cell'][-1,-1] else "sum"
 
     for inclusion in inclusions:
+        inclusion['type'] = "concat" if inclusion['cell'][-1, -1] else "sum"
         inclusion['loss'] = 0.
         inclusion['correct'] = 0
         inclusion['mutations'] = 0
@@ -40,6 +41,7 @@ def create_gene_pool(size, node_range, connectivity_range, inclusions=[]):
 
 
 def run_petri(df, **kwargs):
+    df = df.copy()
     previous_score, best_score = 0, 0
     for index, cell in df.iterrows():
         best_score = int(cell['correct']) if int(cell['correct']) > best_score else best_score
@@ -59,21 +61,21 @@ def run_petri(df, **kwargs):
                 print(prefix + "00.00%) ----------", end="".join([" "] * 100) + "\r")
                 logging.info(prefix)
 
-                if kwargs['connectivity'] == 'parallel':
-                    cell_matrices = [cell['cell'], cell['cell']]
-                else:
-                    cell_matrices = [cell['cell']]
-                model = gen_and_validate(cell_matrices=cell_matrices,
-                                         data=kwargs['data'],
-                                         cell_types=kwargs['cell_types'],
-                                         scale=kwargs['scale'],
-                                         verbose=False)
+            if kwargs['connectivity'] == 'parallel':
+                cell_matrices = [cell['cell'], cell['cell']]
+            else:
+                cell_matrices = [cell['cell']]
+            model = gen_and_validate(cell_matrices=cell_matrices,
+                                     data=kwargs['data'],
+                                     cell_types=kwargs['cell_types'],
+                                     scale=kwargs['scale'],
+                                     verbose=False)
 
             if model:
                 lr_schedule = {'type': 'cosine',
                                'lr_min': .00001,
                                'lr_max': .01,
-                               't_0': 10,
+                               't_0': kwargs['epochs'],
                                't_mult': 1}
 
                 loss, correct, preds = full_model_run(model,
@@ -103,44 +105,7 @@ def run_petri(df, **kwargs):
             if kwargs.get('verbose', True):
                 print("\t Time: {}, Corrects: {}".format(show_time(time() - start_t), df.at[index, 'correct']))
 
-    return df.sort_values('correct', ascending=False)
-
-
-def mutate_cell(cell, mutation_probability):
-    mutated_cell = copy.copy(cell)
-    changes = []
-    nodes = mutated_cell.shape[0]
-    for i in range(nodes):
-        for j in range(nodes):
-            if j > i:
-                if not mutated_cell[i][j] and np.random.rand() < mutation_probability:
-                    new_op = np.random.randint(1, len(idx_to_op))
-                    changes.append([i, j, mutated_cell[i, j], new_op, "Insertion"])
-                    mutated_cell[i, j] = new_op
-                elif mutated_cell[i][j]:
-                    if np.random.rand() < mutation_probability:
-                        if np.random.rand() > .5:
-                            changes.append([i, j, mutated_cell[i, j], 0, "Deletion"])
-                            mutated_cell[i, j] = 0
-                        else:
-                            new_op = np.random.randint(1, len(idx_to_op))
-                            changes.append([i, j, mutated_cell[i, j], new_op, "Alteration"])
-                            mutated_cell[i, j] = new_op
-
-            if j > 0 and i == nodes - 1 and all(mutated_cell[:, j] == 0):
-                changes.append([0, j, mutated_cell[i, j], 1, "Restorative"])
-                mutated_cell[0, j] = 1
-        if i < nodes - 1 and all(mutated_cell[i,] == 0):
-            changes.append([i, -1, mutated_cell[i, j], 1, "Restorative"])
-            mutated_cell[i, -1] = 1
-
-    change_log = []
-    for i, j, old_op, new_op, change_type in changes:
-        change_log.append("{}: {}->{} at {},{}".format(change_type,
-                                                       idx_to_op[old_op],
-                                                       idx_to_op[new_op],
-                                                       i, j))
-    return mutated_cell
+    return df#.sort_values('correct', ascending=False)
 
 
 def mutate_pool(pool, parents, children, mutation_probability):
@@ -150,8 +115,9 @@ def mutate_pool(pool, parents, children, mutation_probability):
     new_pool = []
     for index, cell in seed_pool_sample.iterrows():
         pool.at[index, 'offspring'] += 1
-        child_cell = mutate_cell(cell['cell'], mutation_probability=mutation_probability)
+        child_cell = swap_mutate(cell['cell'], mutate_prob=mutation_probability, swap_prob=.5)
         new_pool.append({'cell': child_cell,
+                         'type': "concat" if child_cell[-1,-1] else "sum",
                          'genotype': cell['genotype'],
                          'mutations': cell['mutations'] + 1,
                          'loss': 0.,

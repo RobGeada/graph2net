@@ -4,8 +4,8 @@ from graph2net.ops import Zero
 
 
 class Edge(nn.Module):
-    def __init__(self, target, origin, op):
-        super(Edge, self).__init__()
+    def __init__(self, target, origin, op, send_frac):
+        super().__init__()
 
         # edge attributes
         self.target = target
@@ -17,20 +17,16 @@ class Edge(nn.Module):
 
         # forward functionality
         self.op_function = None
-        self.padder = lambda x: x
         self.zero = Zero
 
         # bookkeeping
-        self.in_dim = None
+        self.node_out = None
         self.out_dim = None
+        self.send_frac = send_frac
         self.out = None
 
     def forward(self, x, zero=False):
-        if not zero:
-            x = self.padder(x)
-            return self.op_function(x)
-        else:
-            return self.zero(x)
+        return self.op_function(x) if not zero else self.zero(x)
 
     def get_num_params(self):
         return general_num_params(self)
@@ -39,8 +35,10 @@ class Edge(nn.Module):
         return self.__repr__()
 
     def __repr__(self):
-        return "{:<18} -> {:<30} -> {:<18} to Node {} ({:,} params)".format(str(self.in_dim),
-                                                                            self.op,
-                                                                            str(self.out_dim),
-                                                                            self.target.name,
-                                                                            self.get_num_params())
+        send_frac = "{:2.0f}%".format(self.send_frac * 100)
+        return "{:<18} ({:>4})- > {:<50} -> {:<18} to Node {} ({:,} params)".format(str(self.node_out),
+                                                                                    send_frac,
+                                                                                    self.op,
+                                                                                    str(self.out_dim),
+                                                                                    self.target.name,
+                                                                                    self.get_num_params())

@@ -7,13 +7,13 @@ from graph2net.helpers import *
 
 class Dilated_Conv(nn.Module):
     def __init__(self, C_in, C_out, kernel_size, stride, padding, dilation, affine=True):
-        super(Dilated_Conv, self).__init__()
+        super().__init__()
         self.op = nn.Sequential(
             nn.ReLU(inplace=False),
             nn.Conv2d(C_in, C_in, kernel_size=kernel_size, stride=stride, padding=padding, dilation=dilation,
                       groups=C_in, bias=False),
             nn.Conv2d(C_in, C_out, kernel_size=1, padding=0, bias=False),
-            nn.BatchNorm2d(C_out, affine=False),#affine),
+            nn.BatchNorm2d(C_out, affine=False),
         )
 
     def forward(self, x):
@@ -22,12 +22,19 @@ class Dilated_Conv(nn.Module):
 
 class Single_Conv(nn.Module):
     def __init__(self, C_in, C_out, kernel_size, stride, padding, affine=True):
-        super(Single_Conv, self).__init__()
-        self.op = nn.Sequential(
-            nn.ReLU(inplace=False),
-            nn.Conv2d(C_in, C_in, kernel_size=kernel_size, stride=stride, padding=padding, groups=C_in, bias=False),
-            nn.BatchNorm2d(C_out, affine=False),#affine),
-        )
+        super().__init__()
+        if C_in == C_out:
+            self.op = nn.Sequential(
+                nn.ReLU(inplace=False),
+                nn.Conv2d(C_in, C_in, kernel_size=kernel_size, stride=stride, padding=padding, groups=C_in, bias=False),
+                nn.BatchNorm2d(C_in, affine=False),
+            )
+        else:
+            self.op = nn.Sequential(
+                nn.ReLU(inplace=False),
+                nn.Conv2d(C_in, C_out, kernel_size=kernel_size, stride=stride, padding=padding, bias=False),
+                nn.BatchNorm2d(C_out, affine=False),
+            )
 
     def forward(self, x):
         return self.op(x)
@@ -35,7 +42,7 @@ class Single_Conv(nn.Module):
 
 class xBy1_Conv(nn.Module):
     def __init__(self, C_in, C_out, kernel_size, stride, padding, affine=True):
-        super(xBy1_Conv, self).__init__()
+        super().__init__()
         self.op = nn.Sequential(
             nn.ReLU(inplace=False),
             nn.Conv2d(C_in, C_in, kernel_size=(1, kernel_size), stride=stride, padding=(0, padding), bias=False),
@@ -49,7 +56,7 @@ class xBy1_Conv(nn.Module):
 
 class Separable_Conv(nn.Module):
     def __init__(self, C_in, C_out, kernel_size, stride, padding, affine=True):
-        super(Separable_Conv, self).__init__()
+        super().__init__()
         self.op = nn.Sequential(
             nn.ReLU(inplace=False),
             nn.Conv2d(C_in, C_in, kernel_size=kernel_size, stride=stride, padding=padding, groups=C_in, bias=False),
@@ -67,7 +74,7 @@ class Separable_Conv(nn.Module):
 
 class Identity(nn.Module):
     def __init__(self, C_in, C_out, stride):
-        super(Identity, self).__init__()
+        super().__init__()
         if C_in == C_out:
             self.identity = nn.MaxPool2d(1, stride=stride)
         else:
@@ -79,7 +86,7 @@ class Identity(nn.Module):
 
 class Zero(nn.Module):
     def __init__(self):
-        super(Zero, self).__init__()
+        super().__init__()
 
     def forward(self, x):
         return x.mul(0.)
@@ -87,7 +94,7 @@ class Zero(nn.Module):
 
 class nn_View(nn.Module):
     def __init__(self):
-        super(nn_View, self).__init__()
+        super().__init__()
 
     def forward(self, x):
         return x.view(x.size()[0], -1)
@@ -95,7 +102,7 @@ class nn_View(nn.Module):
 
 class Classifier(nn.Module):
     def __init__(self, in_size, out_size):
-        super(Classifier, self).__init__()
+        super().__init__()
         self.in_size = in_size
         self.out_size = out_size
 
@@ -122,7 +129,7 @@ class Classifier(nn.Module):
 
     def __repr__(self):
         params = self.get_param_counts()
-        out = "{} CLASSIFIER {}\n".format(eq_string(48), eq_string(48))
+        out = "{}{:^15}{}\n".format(eq_string(50), "CLASSIFIER", eq_string(50))
         '''
         out += "nn_View:    {:<6} -> {:<6} ({:,} params)\n".format(self.in_size, self.in_size, params[0])
         out += "Dropout:    {:<6} -> {:<6} ({:,} params)\n".format(self.in_size, self.in_size, params[1])
