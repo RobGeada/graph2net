@@ -16,6 +16,7 @@ class Net(nn.Module):
         self.residual_cells = residual_cells
         self.layers = nn.ModuleList()
         self.padders = nn.ModuleList()
+        self.cell_types = cell_types
 
         # initial scaler
         powers = [(2 ** x) for x in range(scale, 20)]

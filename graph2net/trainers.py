@@ -36,12 +36,19 @@ def cosine_anneal_lr(optimizer, lr_min, lr_max, t_0, t, verbose):
     return curr_lr
 
 
-def accuracy_prediction(epoch, corrects):
-    predictors = pkl.load(open('loss_predictors.pkl', "rb"))
-    if predictors.get(epoch):
-        return predictors[epoch]['m'] * corrects + predictors[epoch]['b'], predictors[epoch]['pearson']
+def accuracy_prediction(epoch, corrects, params, reductions, parallel, cells, nodes):
+    if reductions == 5:
+        predictors = pkl.load(open('macro_loss_predictors.pkl', "rb"))
+    elif reductions == 2:
+        predictors = pkl.load(open('micro_loss_predictors.pkl', "rb"))
     else:
-        return corrects,0.
+        return corrects, 0.
+
+    if predictors.get(epoch):
+        X = np.array([corrects, params, reductions, parallel, cells, nodes])
+        return predictors[epoch]['b'] + np.dot(X, predictors[epoch]['m']), predictors[epoch]['95']
+    else:
+        return corrects, 0.
 
 
 # === BASE LEVEL TRAIN AND TEST FUNCTIONS===============================================================================
@@ -190,13 +197,13 @@ def generate(cell_matrices, data, **kwargs):
 #  generate model, check that it works correctly
 def gen_and_validate(cell_matrices, data, **kwargs):
     train_loader, test_loader, data_shape, classes = data
-    model = generate(cell_matrices, data, verbose=kwargs.get('gverbose', False), **kwargs)
-    if model.get_num_params()>1e7:
+    model = generate(cell_matrices, data, **kwargs)
+    if model.get_num_params() > 1e7:
         return False
-    
+
     # validate
     if model:
-        model_validate(model, train_loader, verbose=kwargs.get('vverbose', True))
+        model_validate(model, train_loader, verbose=kwargs.get('verbose', True))
     return model
 
 
@@ -241,6 +248,7 @@ def full_model_run(model, **kwargs):
     losses, corrects, all_preds, epoch_times = [], [], [], []
     train_start = time()
     try:
+        acc_preds = []
         for epoch in range(kwargs['epochs']):
             if epoch and not (epoch + 1) % 32:
                 torch.save(model.state_dict(), "checkpoints/model_ckpt_{}".format(epoch))
@@ -268,22 +276,25 @@ def full_model_run(model, **kwargs):
 
             losses.append(loss)
             corrects.append(correct)
-            
+
             if correct <= 1000 and epoch > 10:
                 if kwargs.get('log', False):
                     log_print("TERMINATED OVER-SATURATED MODEL EARLY AT EPOCH {}".format(epoch))
                 else:
                     print("Terminating over-saturated model early!")
                 return [], np.zeros(kwargs['epochs']), []
-            
-            
-            acc_pred, p_val = accuracy_prediction(epoch, max(corrects))
+
+            acc_pred, confidence = accuracy_prediction(epoch,
+                                                       max(corrects),
+                                                       params=general_num_params(model),
+                                                       reductions=sum(model.cell_types),
+                                                       parallel=len(model.cell_matrices),
+                                                       cells=len(model.cell_types),
+                                                       nodes=len(model.cell_matrices[0]))
+            acc_preds.append(acc_pred)
             if kwargs.get("log", False):
                 logger.info("Prediction: {}".format(int(acc_pred)))
-                logger.info("Pearson-Coef: {:.2f}".format(p_val))
-                
-                
-                
+
             all_preds.append(preds)
 
             if kwargs.get('track_progress', False):
@@ -292,12 +303,12 @@ def full_model_run(model, **kwargs):
                     print(kwargs['prefix'] + correct_perc + progress_bar(epoch + 1, kwargs['epochs']), end="\r")
                 else:
                     correct_perc = "{:005.2f}%".format(correct / len(test_loader.dataset) * 100)
-                    print("{} {:>3}/{}: {}, Predicted: {} (p_c: {:.2f})".format(kwargs['prefix'],
-                                                                                epoch + 1,
-                                                                                kwargs['epochs'],
-                                                                                correct_perc,
-                                                                                int(acc_pred),
-                                                                                p_val), end="\r")
+                    print("{} {:>3}/{}: {}, Predicted: {} (±{:.2f})".format(kwargs['prefix'],
+                                                                            epoch + 1,
+                                                                            kwargs['epochs'],
+                                                                            correct_perc,
+                                                                            int(acc_pred),
+                                                                            confidence), end="\r")
             if kwargs['lr_schedule']['type'] == 'interval':
                 if epoch % kwargs['lr_schedule']['interval'] == 0 and epoch > 0:
                     adjust_lr(optimizer, by=kwargs['lr_schedule']['by'], verbose=kwargs.get('verbose', False))
@@ -348,4 +359,4 @@ def full_model_run(model, **kwargs):
         else:
             logger.info("Run terminated before a single epoch finished")
 
-    return np.array(losses), np.array(corrects), np.array(all_preds)
+    return np.array(losses), np.array(corrects), np.array(all_preds), acc_preds
