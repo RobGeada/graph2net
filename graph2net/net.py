@@ -59,14 +59,25 @@ class Net(nn.Module):
     def get_num_params(self):
         return general_num_params(self)
 
-    def forward(self, x, drop_path, verbose):
+    def forward(self, x, drop_path, verbose):    
         # pass data through initializer
         x = self.initializer(x)
-        #print("Init",sizeof_fmt(torch.cuda.max_memory_allocated(0), "B"))
 
         # pass data through cells
         for i, layer in enumerate(self.layers):
-            #print("=== Layer",i, sizeof_fmt(torch.cuda.max_memory_allocated(0), "B"))
+            current_mem= torch.cuda.memory_allocated(0)/(1024**3)
+            mem_per_layer = current_mem if not i else current_mem/i
+            #print("==Layer")
+            #print("Current: {:.2f}".format(current_mem))
+            #print("/Layer:  {:.2f}".format(mem_per_layer))
+            #print("Sum:     {:.2f}".format(current_mem + mem_per_layer))
+            if current_mem + mem_per_layer > 8.5:
+                raise MemoryError("GPU Memory past safe thresh: "+\
+                                  "{:.2f} GB, {:.2f} GB/layer at layer {}".format(
+                                      current_mem,
+                                      mem_per_layer,
+                                      i))
+                
             cell_out = sum([cell(x, drop_path=drop_path, verbose=verbose) for cell in layer])
             if self.residual_cells:
                 residual = self.padders[i](x)
@@ -74,9 +85,7 @@ class Net(nn.Module):
                 del residual
             else:
                 x = cell_out
-            del cell_out
-            torch.cuda.empty_cache()
-
+        
         # pass data through classifier
         x = self.classifier(x)
         if verbose:

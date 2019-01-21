@@ -118,7 +118,7 @@ class Node(nn.Module):
                     cnx.out = cnx(self.out)
                 else:
                     cnx.out = cnx(chunks[chunk_iterator])
-                    chunk_iterator += 1
+                    chunk_iterator = chunk_iterator + 1 if chunk_iterator +1 < len(chunks) else 0
                 cnx.target.ins.append(cnx.out)
         else:
             name = self.name
@@ -128,7 +128,7 @@ class Node(nn.Module):
                         cnx.out = cnx(self.out)
                     else:
                         cnx.out = cnx(chunks[chunk_iterator])
-                        chunk_iterator += 1
+                        chunk_iterator = chunk_iterator + 1 if chunk_iterator + 1 < len(chunks) else 0
                 else:
                     cnx.out = cnx(self.out, zero=True)
                 cnx.target.ins.append(cnx.out)

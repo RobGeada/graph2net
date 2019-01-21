@@ -91,17 +91,20 @@ def cell_traversals(cell, verbose=False):
                         paths.append(path + [{'o': origin, 't': target}])
 
     path_completion = []
-    for path in paths:
-        for subpath in path:
-            if subpath['t'] is last_node:
-                path_completion.append(True)
-            else:
-                used_edge = any(
-                    [(subpath in path2 or subpath['t'] is last_node) for path2 in paths if path2 is not path])
-                path_completion.append(used_edge)
-    all_paths_complete = all(path_completion)
-    weight_conserved = nodes[last_node] == 1
-    passing = all_paths_complete and weight_conserved and matched
+    if len([subpath for path in paths for subpath in path]) > 10000:
+        passing = False
+    else:
+        for path in paths:
+            for subpath in path:
+                if subpath['t'] is last_node:
+                    path_completion.append(True)
+                else:
+                    used_edge = any(
+                        [(subpath in path2 or subpath['t'] is last_node) for path2 in paths if path2 is not path])
+                    path_completion.append(used_edge)
+        all_paths_complete = all(path_completion)
+        weight_conserved = nodes[last_node] == 1
+        passing = all_paths_complete and weight_conserved and matched
 
     if verbose:
         print("All Paths: {}, Node Weights: {}, Matched: {} | PASS: {}".format(all_paths_complete, nodes, matched,
@@ -187,12 +190,14 @@ def gene_mod(cell, verbose=False):
 # === GENERATE CELL FROM GENES ===
 def gen_cell(nodes, connectivity, concat, verbose=False):
     cell_mod = None
+    i=0
     while cell_mod is None:
         if verbose:
             print("=== Building Cell ===")
         cell_a = gene_a(nodes, connectivity)
         cell = gene_bc(cell_a, concat)
         cell_mod = gene_mod(cell, verbose)
+        i+=1
     return cell_mod
 
 

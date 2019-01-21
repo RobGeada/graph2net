@@ -39,14 +39,20 @@ def cosine_anneal_lr(optimizer, lr_min, lr_max, t_0, t, verbose):
 def accuracy_prediction(epoch, corrects, params, reductions, parallel, cells, nodes):
     if reductions == 5:
         predictors = pkl.load(open('macro_loss_predictors.pkl', "rb"))
+        if predictors.get(epoch):
+            X = np.array([max(corrects), params, reductions, parallel, cells, nodes])
+            return predictors[epoch]['b'] + np.dot(X, predictors[epoch]['m']), predictors[epoch]['95']
+        else:
+            return corrects, 0
     elif reductions == 2:
         predictors = pkl.load(open('micro_loss_predictors.pkl', "rb"))
-    else:
-        return corrects, 0.
+        if predictors.get(epoch):
+            up_to_corrects = [max(corrects[:i+1]) for i in range(epoch+1)]
+            X = np.array(up_to_corrects + [params, reductions, parallel, cells, nodes])
+            return predictors[epoch]['b'] + np.dot(X, predictors[epoch]['m']), predictors[epoch]['95']
+        else:
+            return corrects, 0
 
-    if predictors.get(epoch):
-        X = np.array([corrects, params, reductions, parallel, cells, nodes])
-        return predictors[epoch]['b'] + np.dot(X, predictors[epoch]['m']), predictors[epoch]['95']
     else:
         return corrects, 0.
 
@@ -56,9 +62,9 @@ def train(model, device, train_loader, **kwargs):
     if kwargs.get('verbose', False) and not kwargs.get('validate', False):
         log_print("=========================================================================")
     model.train()
+    
     for batch_idx, (data, target) in enumerate(train_loader):
         data, target = data.to(device), target.to(device)
-        # print(sizeof_fmt(torch.cuda.memory_allocated(0),"B"))
 
         kwargs['optimizer'].zero_grad()
 
@@ -169,20 +175,10 @@ def generate(cell_matrices, data, **kwargs):
                 classes=classes,
                 residual_cells=kwargs.get('residual_cells', False),
                 scale=kwargs.get('scale', 3))
-
     if torch.cuda.is_available():
         model = model.cuda()
     scales = model.get_cell_upscale()[-1]
     params = model.get_num_params()
-
-    if 0:  # len(cell_types) > 1 and scales[0] > 2:
-        if kwargs.get('verbose', False):
-            print("Incorrect scaling ({}), skipping".format(scales))
-        return False
-    elif len(cell_types) == 1 and scales[0] != (2 ** kwargs['scale']):
-        if kwargs.get('verbose', False):
-            print("Incorrect scaling ({}), skipping".format(scales))
-        return False
 
     if kwargs.get('verbose', False):
         print("Cell Scaling Factors:", scales)
@@ -198,12 +194,20 @@ def generate(cell_matrices, data, **kwargs):
 def gen_and_validate(cell_matrices, data, **kwargs):
     train_loader, test_loader, data_shape, classes = data
     model = generate(cell_matrices, data, **kwargs)
-    if model.get_num_params() > 1e7:
+    params = model.get_num_params()
+    #print("{:,} params".format(params))
+    if not (5e6 < params < 25e6) and len(kwargs['cell_types']) > 2:
+        print("Model outside size boundaries, terminating.")
         return False
 
     # validate
     if model:
-        model_validate(model, train_loader, verbose=kwargs.get('verbose', True))
+        try:
+            model_validate(model, train_loader, verbose=kwargs.get('verbose', True))
+        except MemoryError as e:
+            print("\n{}".format(e))
+            return False
+    #print("Allocated: {:.2f} GB".format(torch.cuda.memory_allocated(0)/(1024**3)))
     return model
 
 
@@ -248,7 +252,7 @@ def full_model_run(model, **kwargs):
     losses, corrects, all_preds, epoch_times = [], [], [], []
     train_start = time()
     try:
-        acc_preds = []
+        acc_preds, confidences = [], []
         for epoch in range(kwargs['epochs']):
             if epoch and not (epoch + 1) % 32:
                 torch.save(model.state_dict(), "checkpoints/model_ckpt_{}".format(epoch))
@@ -277,21 +281,22 @@ def full_model_run(model, **kwargs):
             losses.append(loss)
             corrects.append(correct)
 
-            if correct <= 1000 and epoch > 10:
+            if correct <= 1000 and epoch > 5:
                 if kwargs.get('log', False):
                     log_print("TERMINATED OVER-SATURATED MODEL EARLY AT EPOCH {}".format(epoch))
                 else:
                     print("Terminating over-saturated model early!")
-                return [], np.zeros(kwargs['epochs']), []
+                return [], np.zeros(kwargs['epochs']), [],[]
 
             acc_pred, confidence = accuracy_prediction(epoch,
-                                                       max(corrects),
+                                                       corrects,
                                                        params=general_num_params(model),
                                                        reductions=sum(model.cell_types),
                                                        parallel=len(model.cell_matrices),
                                                        cells=len(model.cell_types),
                                                        nodes=len(model.cell_matrices[0]))
             acc_preds.append(acc_pred)
+            confidences.append(confidence)
             if kwargs.get("log", False):
                 logger.info("Prediction: {}".format(int(acc_pred)))
 
@@ -359,4 +364,4 @@ def full_model_run(model, **kwargs):
         else:
             logger.info("Run terminated before a single epoch finished")
 
-    return np.array(losses), np.array(corrects), np.array(all_preds), acc_preds
+    return np.array(losses), np.array(corrects), np.array(all_preds), acc_preds, confidences

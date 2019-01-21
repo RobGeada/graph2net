@@ -51,7 +51,7 @@ class Cell(nn.Module):
             # node send attributes
             elif origin > target:
                 send_origin, send_target = target, origin
-                frac = 1 if cell[origin, target] == 0 else 1 / sum(cell[target + 1:, target])
+                frac = 1 if cell[origin, target] == 0 else 1 / min(self.in_dim[1], sum(cell[target + 1:, target]))
                 self.nodes[send_origin].send_fraction[send_target] = frac
 
             # edge operations

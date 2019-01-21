@@ -5,6 +5,8 @@ import logging
 import matplotlib.pyplot as plt
 import pandas as pd
 import torch
+import gc
+from functools import reduce
 
 
 # === MODEL HELPERS ====================================================================================================
@@ -47,7 +49,6 @@ def dump_tensors(gpu_only=True):
     out = pd.DataFrame(out, columns=['name', 'dim', 'size'])
     out = out.sort_values(by='size', ascending=False)
     display(out)
-
 
 # === NUMPY HELPERS ====================================================================================================
 def indeces(arr):
