@@ -5,8 +5,6 @@ import logging
 import matplotlib.pyplot as plt
 import pandas as pd
 import torch
-import gc
-from functools import reduce
 
 
 # === MODEL HELPERS ====================================================================================================
@@ -48,7 +46,44 @@ def dump_tensors(gpu_only=True):
             pass
     out = pd.DataFrame(out, columns=['name', 'dim', 'size'])
     out = out.sort_values(by='size', ascending=False)
-    display(out)
+    return out
+
+
+def cell_space(reductions,spacing):
+    return ([1]+[0]*spacing)*(reductions-1)+[1]
+
+
+def max_model_size(cell,data):
+    from graph2net.trainers import gen_and_validate
+    cell_results = []
+
+    for scale in reversed(range(4, 7)):
+        for spacing in range(2, 6):
+            for parallel in [True, False]:
+                cell_list = [cell, cell] if parallel else [cell]
+                model, valid, reason = gen_and_validate(cell_list,
+                                                        data,
+                                                        scale=scale,
+                                                        cell_types=cell_space(5, spacing),
+                                                        verbose=False)
+                params = model.get_num_params()
+
+                del model
+                torch.cuda.empty_cache()
+
+                if valid:
+                    cell_results.append([scale, spacing, parallel, params])
+            if not valid:
+                break
+        if len(cell_results) or reason == 'other':
+            break
+
+    if len(cell_results):
+        cell_results.sort(key=lambda x: (x[3], x[1]), reverse=True)
+        return cell_results[0]
+    else:
+        return False
+
 
 # === NUMPY HELPERS ====================================================================================================
 def indeces(arr):

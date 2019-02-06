@@ -17,6 +17,7 @@ class Node(nn.Module):
         # node internal operations
         self.concatenate = concatenate
         self.padder = None
+        self.normalizer = None
 
         # connection dimensionality
         self.dim = [dim] if dim is not None else []
@@ -37,13 +38,14 @@ class Node(nn.Module):
         self.out = None
 
     def set_post_pad_channels(self):
-        self.in_channels =  sum([x[1] for x in self.dim]) if self.concatenate else self.dim[0][1]
-
+        self.in_channels = sum([x[1] for x in self.dim]) if self.concatenate else self.dim[0][1]
         # double channels if node receives cell input
         if self.is_input_node and self.cell_type == 1:
             self.post_pad_channels = self.in_channels * 2
         else:
             self.post_pad_channels = self.in_channels
+
+        self.normalizer = normalizer(self.in_channels)
         self.padder = padder(self.in_channels, self.post_pad_channels)
 
     def add_cnx(self, cnx, send_frac):
@@ -52,7 +54,12 @@ class Node(nn.Module):
 
         # correct target channels if operation is channel modification and target channels are valid
         if 'channel' in cnx.op:
-            op_scaler = 2 if 'double' in cnx.op else .5
+            if 'double' in cnx.op:
+                op_scaler = 2
+            elif 'halve' in cnx.op and cnx_in_channels % 2 == 0:
+                op_scaler = .5
+            else:
+                op_scaler = 1
             is_summation = not cnx.target.concatenate
             target_dim_set = not not cnx.target.dim
 
@@ -102,6 +109,9 @@ class Node(nn.Module):
             self.out = torch.cat(self.ins, 1)
         else:
             self.out = sum(self.ins)
+
+        # normalize input tensors
+        self.out = self.normalizer(self.out)
 
         # clear memory of inputs (to avoid "retain-graph=True error")
         self.ins = []

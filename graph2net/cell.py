@@ -4,7 +4,6 @@ from graph2net.edge import Edge
 from graph2net.helpers import *
 
 import random
-# random.seed(7)
 
 
 class Cell(nn.Module):
@@ -21,7 +20,7 @@ class Cell(nn.Module):
             if node == 0:
                 self.nodes += [Node(0,
                                     cell_type=self.cell_type,
-                                   concatenate=self.cell[node, node],
+                                    concatenate=self.cell[node, node],
                                     input_node=(self.layer > 0),
                                     dim=self.in_dim)]
                 self.nodes[0].set_post_pad_channels()
@@ -29,7 +28,7 @@ class Cell(nn.Module):
                 self.nodes += [Node(node,
                                     cell_type=self.cell_type,
                                     concatenate=self.cell[node, node],
-                                    output_node=(node == cell.shape[0]-1))]
+                                    output_node=(node == cell.shape[0] - 1))]
 
         # create edge parameters
         self.edges = nn.ModuleList()
@@ -40,7 +39,7 @@ class Cell(nn.Module):
             # node summation function
             if origin == target:
                 self.nodes[origin].set_post_pad_channels()
-                
+
                 if not cell[origin, target]:
                     if not all([x == self.nodes[origin].dim[0] for x in self.nodes[origin].dim]):
                         raise ValueError("Input Mismatch for Summation Node {}".format(target))
@@ -78,7 +77,7 @@ class Cell(nn.Module):
 
     def forward(self, x, drop_path, verbose):
         if drop_path:
-            preserved = {0,  self.nodes[-1].name}
+            preserved = {0, self.nodes[-1].name}
             for i, node in enumerate(self.nodes):
                 node_cnx = {}
                 if i in preserved:
@@ -90,7 +89,7 @@ class Cell(nn.Module):
                             cnxs -= 1
                         else:
                             preserved.add(target)
-                            node_cnx[i,target] = True
+                            node_cnx[i, target] = True
                 out = node.forward(x, node_cnx=node_cnx, verbose=verbose)
         else:
             for i, node in enumerate(self.nodes):

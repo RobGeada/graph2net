@@ -1,7 +1,8 @@
-import numpy as np
 import logging
+import numpy as np
 import random
 from time import time
+import pickle as pkl
 
 import torch
 import torch.nn as nn
@@ -10,11 +11,8 @@ import torch.optim as optim
 
 from graph2net.graph_generators import show_cell
 from graph2net.net import Net
-from graph2net.helpers import *
-import pickle as pkl
+from graph2net.helpers import log_print, show_time, curr_time, general_num_params
 
-
-# torch.backends.cudnn.deterministic=True
 
 # === EPOCH LEVEL FUNCTIONS ============================================================================================
 def adjust_lr(optimizer, by=None, verbose=False):
@@ -32,22 +30,22 @@ def cosine_anneal_lr(optimizer, lr_min, lr_max, t_0, t, verbose):
         curr_lr = lr_min + .5 * (lr_max - lr_min) * (1 + np.cos((t * np.pi / t_0)))
         param_group['lr'] = curr_lr
     if verbose:
-        log_print("\x1b[31mAdjusting lr to {}\x1b[0m".format(curr_lr))
+        log_print("\n\x1b[31mAdjusting lr to {}\x1b[0m".format(curr_lr))
     return curr_lr
 
 
-def accuracy_prediction(epoch, corrects, params, reductions, parallel, cells, nodes):
+def accuracy_prediction(epoch, corrects, params, parallel, cells, nodes, scale, lr_max, reductions):
     if reductions == 5:
         predictors = pkl.load(open('macro_loss_predictors.pkl', "rb"))
         if predictors.get(epoch):
-            X = np.array([max(corrects), params, reductions, parallel, cells, nodes])
+            X = np.array([max(corrects), params, parallel, cells, nodes, scale, lr_max])
             return predictors[epoch]['b'] + np.dot(X, predictors[epoch]['m']), predictors[epoch]['95']
         else:
             return corrects, 0
     elif reductions == 2:
         predictors = pkl.load(open('micro_loss_predictors.pkl', "rb"))
         if predictors.get(epoch):
-            up_to_corrects = [max(corrects[:i+1]) for i in range(epoch+1)]
+            up_to_corrects = [max(corrects[:i + 1]) for i in range(epoch + 1)]
             X = np.array(up_to_corrects + [params, reductions, parallel, cells, nodes])
             return predictors[epoch]['b'] + np.dot(X, predictors[epoch]['m']), predictors[epoch]['95']
         else:
@@ -62,7 +60,7 @@ def train(model, device, train_loader, **kwargs):
     if kwargs.get('verbose', False) and not kwargs.get('validate', False):
         log_print("=========================================================================")
     model.train()
-    
+
     for batch_idx, (data, target) in enumerate(train_loader):
         data, target = data.to(device), target.to(device)
 
@@ -72,8 +70,15 @@ def train(model, device, train_loader, **kwargs):
             drop_path = random.random() > .5
         else:
             drop_path = False
-        output = model.forward(data, drop_path=drop_path, verbose=kwargs.get('debug_verbose', False))
-        loss = kwargs['criterion'](output, target)
+
+        outputs = model.forward(data,
+                                drop_path=drop_path,
+                                verbose=False,
+                                auxillary=True,
+                                validate=kwargs.get('validate', False))
+        loss_f = lambda x: kwargs['criterion'](x, target)
+        discount = 1/len(outputs)
+        loss = loss_f(outputs[-1]) + sum([discount * loss_f(x) for x in outputs[:-1]])
         loss.backward()
         kwargs['optimizer'].step()
 
@@ -132,7 +137,7 @@ def model_validate(model, train_loader, verbose):
     if verbose:
         print("Validating model...", end="")
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    optimizer = optim.SGD(model.parameters(), lr=.025, momentum=.9, weight_decay=3e-4)
+    optimizer = optim.SGD(model.parameters(), lr=0, momentum=.9, weight_decay=3e-4)
     criterion = nn.CrossEntropyLoss()
 
     t_start = time()
@@ -174,6 +179,7 @@ def generate(cell_matrices, data, **kwargs):
                 in_dim=data_shape,
                 classes=classes,
                 residual_cells=kwargs.get('residual_cells', False),
+                auxiliaries=kwargs.get('auxiliaries',[None]),
                 scale=kwargs.get('scale', 3))
     if torch.cuda.is_available():
         model = model.cuda()
@@ -195,20 +201,23 @@ def gen_and_validate(cell_matrices, data, **kwargs):
     train_loader, test_loader, data_shape, classes = data
     model = generate(cell_matrices, data, **kwargs)
     params = model.get_num_params()
-    #print("{:,} params".format(params))
-    if not (5e6 < params < 25e6) and len(kwargs['cell_types']) > 2:
-        print("Model outside size boundaries, terminating.")
-        return False
+    # print("{:,} params".format(params))
+    # if not (5e6 < params < 25e6) and len(kwargs['cell_types']) > 2:
+    #    print("Model outside size boundaries, terminating.")
+    #    return False
 
     # validate
     if model:
         try:
             model_validate(model, train_loader, verbose=kwargs.get('verbose', True))
-        except MemoryError as e:
-            print("\n{}".format(e))
-            return False
-    #print("Allocated: {:.2f} GB".format(torch.cuda.memory_allocated(0)/(1024**3)))
-    return model
+        except RuntimeError as e:
+            if "CUDA" in str(e):
+                return model, False, "memory"
+        except Exception as e:
+            return model, False, "other"
+
+    # print("Allocated: {:.2f} GB".format(torch.cuda.memory_allocated(0)/(1024**3)))
+    return model,True,None
 
 
 # === TOP LEVEL TRAINING FUNCTION ======================================================================================
@@ -235,12 +244,11 @@ def full_model_run(model, **kwargs):
         [logger.info("{}: {}".format(k, v)) for k, v in kwargs.items() if k != 'data']
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    torch.cuda.manual_seed(7)
     train_loader, test_loader, data_shape, classes = kwargs['data']
 
     if kwargs['lr_schedule']['type'] == "cosine":
         t = 0
-        lr = kwargs['lr_schedule']['lr_min']
+        lr = kwargs['lr_schedule']['lr_max']
         t_0 = kwargs['lr_schedule']['t_0']
     optimizer = optim.SGD(model.parameters(),
                           lr=lr,
@@ -286,17 +294,27 @@ def full_model_run(model, **kwargs):
                     log_print("TERMINATED OVER-SATURATED MODEL EARLY AT EPOCH {}".format(epoch))
                 else:
                     print("Terminating over-saturated model early!")
-                return [], np.zeros(kwargs['epochs']), [],[]
+                return [], np.full(kwargs['epochs'], 1000), [], [], []
 
             acc_pred, confidence = accuracy_prediction(epoch,
                                                        corrects,
                                                        params=general_num_params(model),
-                                                       reductions=sum(model.cell_types),
                                                        parallel=len(model.cell_matrices),
                                                        cells=len(model.cell_types),
-                                                       nodes=len(model.cell_matrices[0]))
+                                                       nodes=len(model.cell_matrices[0]),
+                                                       scale=model.scale,
+                                                       lr_max=kwargs['lr_schedule']['lr_max'],
+                                                       reductions=sum(model.cell_types))
             acc_preds.append(acc_pred)
             confidences.append(confidence)
+
+            # if acc_pred+confidence < 9000 and epoch>10:
+            #    if kwargs.get('log', False):
+            #        log_print("TERMINATED UNDER-PERFORMING MODEL EARLY AT EPOCH {}".format(epoch))
+            #    else:
+            #        print("Terminating under-performing model early")
+            #    return np.array(losses), np.array(corrects), np.array(all_preds), acc_preds, confidences
+
             if kwargs.get("log", False):
                 logger.info("Prediction: {}".format(int(acc_pred)))
 
@@ -308,12 +326,12 @@ def full_model_run(model, **kwargs):
                     print(kwargs['prefix'] + correct_perc + progress_bar(epoch + 1, kwargs['epochs']), end="\r")
                 else:
                     correct_perc = "{:005.2f}%".format(correct / len(test_loader.dataset) * 100)
-                    print("{} {:>3}/{}: {}, Predicted: {} (±{:.2f})".format(kwargs['prefix'],
-                                                                            epoch + 1,
-                                                                            kwargs['epochs'],
-                                                                            correct_perc,
-                                                                            int(acc_pred),
-                                                                            confidence), end="\r")
+                    print("{} {:>3}/{}: {}, Predicted: {:>4} (±{:>4.0f})".format(kwargs['prefix'],
+                                                                                 epoch + 1,
+                                                                                 kwargs['epochs'],
+                                                                                 correct_perc,
+                                                                                 int(acc_pred),
+                                                                                 confidence), end="\r")
             if kwargs['lr_schedule']['type'] == 'interval':
                 if epoch % kwargs['lr_schedule']['interval'] == 0 and epoch > 0:
                     adjust_lr(optimizer, by=kwargs['lr_schedule']['by'], verbose=kwargs.get('verbose', False))
@@ -325,8 +343,7 @@ def full_model_run(model, **kwargs):
                     t_0 *= kwargs['lr_schedule']['t_mult']
                     t = 0
                     if kwargs.get('verbose', False):
-                        print(epoch)
-                        log_print("\x1b[31mRestarting Learning Rate, setting new cycle length to {}\x1b[0m".format(t_0))
+                        print("\n\x1b[31mRestarting Learning Rate, setting new cycle length to {}\x1b[0m".format(t_0))
                     if kwargs.get("log", False):
                         logger.info("Restarting Learning Rate, setting new cycle length to {}\x1b[0m".format(t_0))
                 cosine_anneal_lr(optimizer,

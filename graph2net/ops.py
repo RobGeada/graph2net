@@ -5,68 +5,72 @@ from graph2net.helpers import *
 # torch.backends.cudnn.deterministic=True
 
 
+def bracket(ops, ops2=None):
+    first_relu = False
+    inplace = False
+    if first_relu:
+        out = [nn.ReLU(inplace=inplace)] + ops + [nn.BatchNorm2d(ops[-1].out_channels, affine=Trye)]
+        if ops2:
+            out += [nn.ReLU(inplace=inplace)] + ops2 + [nn.BatchNorm2d(ops2[-1].out_channels, affine=True)]
+        return nn.Sequential(*out)
+    else:
+        out = ops + [nn.BatchNorm2d(ops[-1].out_channels, affine=True)]
+        if ops2:
+            out += [nn.ReLU(inplace=inplace)] + ops2 + [nn.BatchNorm2d(ops2[-1].out_channels, affine=True)]
+        return nn.Sequential(*out)
+
+
 class Dilated_Conv(nn.Module):
-    def __init__(self, C_in, C_out, kernel_size, stride, padding, dilation, affine=True):
+    def __init__(self, C_in, C_out, kernel_size, stride, padding, dilation):
         super().__init__()
-        self.op = nn.Sequential(
-            nn.ReLU(inplace=False),
+        self.op = bracket([
             nn.Conv2d(C_in, C_in, kernel_size=kernel_size, stride=stride, padding=padding, dilation=dilation,
                       groups=C_in, bias=False),
-            nn.Conv2d(C_in, C_out, kernel_size=1, padding=0, bias=False),
-            nn.BatchNorm2d(C_out, affine=False),
-        )
+            nn.Conv2d(C_in, C_out, kernel_size=1, padding=0, bias=False)
+        ])
 
     def forward(self, x):
         return self.op(x)
 
 
 class Single_Conv(nn.Module):
-    def __init__(self, C_in, C_out, kernel_size, stride, padding, affine=True):
+    def __init__(self, C_in, C_out, kernel_size, stride, padding):
         super().__init__()
         if C_in == C_out:
-            self.op = nn.Sequential(
-                nn.ReLU(inplace=False),
+            self.op = bracket([
                 nn.Conv2d(C_in, C_in, kernel_size=kernel_size, stride=stride, padding=padding, groups=C_in, bias=False),
-                nn.BatchNorm2d(C_in, affine=False),
-            )
+            ])
         else:
-            self.op = nn.Sequential(
-                nn.ReLU(inplace=False),
-                nn.Conv2d(C_in, C_out, kernel_size=kernel_size, stride=stride, padding=padding, bias=False),
-                nn.BatchNorm2d(C_out, affine=False),
-            )
+            self.op = bracket([
+                nn.Conv2d(C_in, C_out, kernel_size=kernel_size, stride=stride, padding=padding, bias=False)
+            ])
 
     def forward(self, x):
         return self.op(x)
 
 
 class xBy1_Conv(nn.Module):
-    def __init__(self, C_in, C_out, kernel_size, stride, padding, affine=True):
+    def __init__(self, C_in, C_out, kernel_size, stride, padding):
         super().__init__()
-        self.op = nn.Sequential(
-            nn.ReLU(inplace=False),
+        self.op = bracket([
             nn.Conv2d(C_in, C_in, kernel_size=(1, kernel_size), stride=stride, padding=(0, padding), bias=False),
-            nn.Conv2d(C_in, C_in, kernel_size=(kernel_size, 1), padding=(padding, 0), bias=False),
-            nn.BatchNorm2d(C_in, affine=False),#affine),
-        )
+            nn.Conv2d(C_in, C_in, kernel_size=(kernel_size, 1), padding=(padding, 0), bias=False)
+        ])
 
     def forward(self, x):
         return self.op(x)
 
 
 class Separable_Conv(nn.Module):
-    def __init__(self, C_in, C_out, kernel_size, stride, padding, affine=True):
+    def __init__(self, C_in, C_out, kernel_size, stride, padding):
         super().__init__()
-        self.op = nn.Sequential(
-            nn.ReLU(inplace=False),
+        self.op = bracket([
             nn.Conv2d(C_in, C_in, kernel_size=kernel_size, stride=stride, padding=padding, groups=C_in, bias=False),
-            nn.Conv2d(C_in, C_in, kernel_size=1, padding=0, bias=False),
-            nn.BatchNorm2d(C_in, affine=False),#affine),
-            nn.ReLU(inplace=False),
+            nn.Conv2d(C_in, C_in, kernel_size=1, padding=0, bias=False)
+        ], [
             nn.Conv2d(C_in, C_in, kernel_size=kernel_size, stride=1, padding=padding, groups=C_in, bias=False),
-            nn.Conv2d(C_in, C_in, kernel_size=1, padding=0, bias=False),
-            nn.BatchNorm2d(C_out, affine=False),#affine),
-        )
+            nn.Conv2d(C_in, C_in, kernel_size=1, padding=0, bias=False)
+        ])
 
     def forward(self, x):
         return self.op(x)
@@ -101,15 +105,16 @@ class nn_View(nn.Module):
 
 
 class Classifier(nn.Module):
-    def __init__(self, in_size, out_size):
+    def __init__(self, in_size, out_size, name='Classifier'):
         super().__init__()
         self.in_size = in_size
         self.out_size = out_size
+        self.name = name
 
-
+        #'''
         self.op = nn.Sequential(
             nn_View(),
-            nn.Linear(in_size,out_size)
+            nn.Linear(in_size, out_size)
         )
         '''
         self.op = nn.Sequential(
@@ -120,6 +125,7 @@ class Classifier(nn.Module):
             nn.Linear(in_size, out_size),
             nn.Softmax(dim=1)
         )'''
+        #'''
 
     def forward(self, x):
         return self.op(x)
@@ -129,7 +135,7 @@ class Classifier(nn.Module):
 
     def __repr__(self):
         params = self.get_param_counts()
-        out = "{}{:^15}{}\n".format(eq_string(50), "CLASSIFIER", eq_string(50))
+        out = "{}{:^15}{}\n".format(eq_string(50), self.name.upper(), eq_string(50))
         '''
         out += "nn_View:    {:<6} -> {:<6} ({:,} params)\n".format(self.in_size, self.in_size, params[0])
         out += "Dropout:    {:<6} -> {:<6} ({:,} params)\n".format(self.in_size, self.in_size, params[1])
@@ -138,7 +144,7 @@ class Classifier(nn.Module):
         out += "Linear:     {:<6} -> {:<6} ({:,} params)\n".format(self.in_size, self.out_size, params[4])
         out += "Softmax:    {:<6} -> {:<6} ({:,} params)\n".format(self.out_size, self.out_size, params[5])
         '''
-        out += "Classifier:  {:<6} -> {:<6} ({:,} params)\n".format(self.in_size, self.out_size, sum(params))
+        out += "{}:  {:<6} -> {:<6} ({:,} params)".format(self.name, self.in_size, self.out_size, sum(params))
         return out
 
 
@@ -167,6 +173,7 @@ commons = {
 }
 
 padder = lambda C_in, C_out: Identity(C_in, C_out, stride=1)
+normalizer = lambda C_in: nn.BatchNorm2d(C_in, affine=False)
 idx_to_op = dict(enumerate(list(commons.keys())))
 op_to_idx = {op: idx for idx, op in idx_to_op.items()}
 

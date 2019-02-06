@@ -91,7 +91,7 @@ def cell_traversals(cell, verbose=False):
                         paths.append(path + [{'o': origin, 't': target}])
 
     path_completion = []
-    if len([subpath for path in paths for subpath in path]) > 10000:
+    if len([subpath for path in paths for subpath in path]) > 2500:
         passing = False
     else:
         for path in paths:
@@ -104,7 +104,8 @@ def cell_traversals(cell, verbose=False):
                     path_completion.append(used_edge)
         all_paths_complete = all(path_completion)
         weight_conserved = nodes[last_node] == 1
-        passing = all_paths_complete and weight_conserved and matched
+        min_input_pass = False if min(nodes.values()) == 0 else 1 / min(nodes.values()) <= 4
+        passing = all_paths_complete and weight_conserved and matched and min_input_pass
 
     if verbose:
         print("All Paths: {}, Node Weights: {}, Matched: {} | PASS: {}".format(all_paths_complete, nodes, matched,
@@ -113,47 +114,67 @@ def cell_traversals(cell, verbose=False):
 
 
 # === GENE MODDING ===
-def find_partition(l):
-    xs = [[] for _ in range(int(sum(l)))]
-    for n in sorted(l, reverse=True):
-        emptiest = np.argmin([sum(x) for x in xs])
-        if sum(xs[emptiest]) < 1:
-            xs[emptiest].append(n)
-    return xs
+def find_partition(l, partition_type):
+    if partition_type == 'concat':
+        xs = [[] for _ in range(int(sum(l)))]
+        for n in sorted(l, reverse=True):
+            emptiest = np.argmin([sum(x) for x in xs])
+            if sum(xs[emptiest]) < 1:
+                xs[emptiest].append(n)
+        return xs
+    else:
+        avail_drops = [i for i in range(len(l)) if sum(np.delete(l, i)) == 1]
+        for i in avail_drops:
+            test_arr = l.copy()
+            test_arr[i] = np.nan
+            matches = np.where(l[i] == test_arr)
+            if len(matches[0]):
+                pair = [i, matches[0][0]]
+                return list(l[pair]), list(np.delete(l, pair))
+        return None
 
 
-def add_node(cell, weights):
+def add_node(cell, weights, add_type):
     # find number of additional output nodes needed
     out = cell
-    partitions = find_partition(weights)
-    new_nodes = len([x for x in partitions if x != [1]])
-    mod_index = cell.shape[0] - 1
-    target_index = mod_index
-    if new_nodes:
-        out = np.pad(out, ((0, new_nodes), (0, new_nodes)), mode='constant', constant_values=0)
 
-    # add nodes for each partition
-    for partition in partitions:
-        for weight in partition:
-            # find first matching edge
-            change = [i for (i, x) in enumerate(weights) if x == weight][0]
+    partitions = find_partition(weights, partition_type=add_type)
 
-            if weight == 1:
-                # link correct weighted edges to output
-                out[change, -1] = out[change, mod_index]
-                out[change, mod_index] = 0
-            else:
-                # link partitioned edges to intermediate nodes
-                out[change, target_index] = out[change, mod_index]
-                if target_index != mod_index:
+    if partitions:
+        if add_type == 'concat':
+            new_nodes = len([x for x in partitions if x != [1]])
+        else:
+            new_nodes = len(partitions) - 1
+
+        mod_index = cell.shape[0] - 1
+        target_index = mod_index
+        if new_nodes:
+            out = np.pad(out, ((0, new_nodes), (0, new_nodes)), mode='constant', constant_values=0)
+
+        # add nodes for each partition
+        for partition in partitions:
+            for weight in partition:
+                # find first matching edge
+                change = [i for (i, x) in enumerate(weights) if x == weight][0]
+
+                if weight == 1:
+                    # link correct weighted edges to output
+                    out[change, -1] = out[change, mod_index]
                     out[change, mod_index] = 0
-                out[target_index, target_index] = 1
-                out[target_index, -1] = 1
-                weights[change] = 0
+                else:
+                    # link partitioned edges to intermediate nodes
+                    out[change, target_index] = out[change, mod_index]
+                    if target_index != mod_index:
+                        out[change, mod_index] = 0
+                    out[target_index, target_index] = 1 if add_type == 'concat' else 0
+                    out[target_index, -1] = 1
+                    weights[change] = 0
 
-        if partition != [1]:
-            target_index += 1
-    return out
+            if partition != [1]:
+                target_index += 1
+        return out
+    else:
+        return False
 
 
 def gene_mod(cell, verbose=False):
@@ -172,10 +193,15 @@ def gene_mod(cell, verbose=False):
     # add intermediate concat nodes to ensure input/output consistency
     out_weight = weights[:, -1]
     if sum(out_weight) % 1 == 0 and max(out_weight) <= 1 and any(x != 1 for x in out_weight):
-        new_cell = add_node(new_cell, out_weight)
+        new_cell = add_node(new_cell, out_weight, add_type='concat')
         valid, weights, amends = cell_traversals(new_cell, verbose)
         if valid:
             return new_cell
+
+    # trial adding summation nodes
+    new_cell_summation = add_node(new_cell, out_weight, add_type='summation')
+    if new_cell_summation is not False and cell_traversals(new_cell_summation, verbose)[0]:
+        return new_cell_summation
 
     # trial intermediate concat nodes
     for i in range(1, new_cell.shape[0]):
@@ -190,14 +216,14 @@ def gene_mod(cell, verbose=False):
 # === GENERATE CELL FROM GENES ===
 def gen_cell(nodes, connectivity, concat, verbose=False):
     cell_mod = None
-    i=0
+    i = 0
     while cell_mod is None:
         if verbose:
             print("=== Building Cell ===")
         cell_a = gene_a(nodes, connectivity)
         cell = gene_bc(cell_a, concat)
         cell_mod = gene_mod(cell, verbose)
-        i+=1
+        i += 1
     return cell_mod
 
 
@@ -264,8 +290,11 @@ def swap_mutate(cell, swap_prob, mutate_prob):
     swapped = concat_swap(cell, swap_prob)
     modded = None
     while modded is None:
-        mutated = mutate_cell(swapped, mutate_prob)
-        modded = gene_mod(mutated)
+        try:
+            mutated = mutate_cell(swapped, mutate_prob)
+            modded = gene_mod(mutated)
+        except:
+            pass
     return modded
 
 
