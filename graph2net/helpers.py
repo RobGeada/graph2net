@@ -57,7 +57,7 @@ def max_model_size(cell,data):
     from graph2net.trainers import gen_and_validate
     cell_results = []
 
-    for scale in reversed(range(4, 7)):
+    for scale in reversed(range(4, 9)):
         for spacing in range(2, 6):
             for parallel in [True, False]:
                 cell_list = [cell, cell] if parallel else [cell]
@@ -66,13 +66,12 @@ def max_model_size(cell,data):
                                                         scale=scale,
                                                         cell_types=cell_space(5, spacing),
                                                         verbose=False)
-                params = model.get_num_params()
-
-                del model
-                torch.cuda.empty_cache()
 
                 if valid:
+                    params = model.get_num_params()
                     cell_results.append([scale, spacing, parallel, params])
+                del model
+                torch.cuda.empty_cache()
             if not valid:
                 break
         if len(cell_results) or reason == 'other':
@@ -103,6 +102,9 @@ def channel_mod(l, value):
 def width_mod(l, by):
     return [x if i not in [2, 3] else int(x / by) for (i, x) in enumerate(l)]
 
+
+def top_n(arr):
+    return sorted(enumerate(arr),key=lambda x: x[1],reverse=True)
 
 # === I/O HELPERS ======================================================================================================
 def eq_string(n):

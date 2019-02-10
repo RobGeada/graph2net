@@ -75,22 +75,7 @@ class Net(nn.Module):
         x = self.initializer(x)
 
         # pass data through cells
-        #mem_per_layer = [torch.cuda.memory_allocated(0) / (1024 ** 3)]
         for i, layer in enumerate(self.layers):
-            #if i :
-            #    mem_per_layer.append(torch.cuda.memory_allocated(0) / (1024 ** 3))
-            #mem_diff = mem_per_layer[-1]-mem_per_layer[-2] if len(mem_per_layer) > 1  else 0
-            #print(pp(mem_diff), list_pp(mem_per_layer))
-            #if mem_per_layer[-1] + mem_diff > 8.5:
-            #    if True:#False:
-            #        # print("=== Overallocated! ===")
-            #        print(mem_per_layer)
-            #        raise MemoryError("GPU Memory past safe thresh: " +
-            #                          "{:.2f} GB, {:.2f} GB/layer at layer {}".format(
-            #                              mem_per_layer[-1],
-            #                              mem_diff,
-            #                              i))
-
             cell_out = sum([cell(x, drop_path=drop_path, verbose=verbose) for cell in layer])
             if self.residual_cells:
                 residual = self.padders[i](x)

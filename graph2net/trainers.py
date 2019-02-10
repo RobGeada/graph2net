@@ -12,6 +12,7 @@ import torch.optim as optim
 from graph2net.graph_generators import show_cell
 from graph2net.net import Net
 from graph2net.helpers import log_print, show_time, curr_time, general_num_params
+import warnings
 
 
 # === EPOCH LEVEL FUNCTIONS ============================================================================================
@@ -35,25 +36,22 @@ def cosine_anneal_lr(optimizer, lr_min, lr_max, t_0, t, verbose):
 
 
 def accuracy_prediction(epoch, corrects, params, parallel, cells, nodes, scale, lr_max, reductions):
-    if reductions == 5:
-        predictors = pkl.load(open('macro_loss_predictors.pkl', "rb"))
-        if predictors.get(epoch):
-            X = np.array([max(corrects), params, parallel, cells, nodes, scale, lr_max])
-            return predictors[epoch]['b'] + np.dot(X, predictors[epoch]['m']), predictors[epoch]['95']
-        else:
-            return corrects, 0
-    elif reductions == 2:
-        predictors = pkl.load(open('micro_loss_predictors.pkl', "rb"))
-        if predictors.get(epoch):
-            up_to_corrects = [max(corrects[:i + 1]) for i in range(epoch + 1)]
-            X = np.array(up_to_corrects + [params, reductions, parallel, cells, nodes])
-            return predictors[epoch]['b'] + np.dot(X, predictors[epoch]['m']), predictors[epoch]['95']
-        else:
-            return corrects, 0
-
-    else:
-        return corrects, 0.
-
+    try:
+        if reductions == 5:
+            predictors = pkl.load(open('pickle_jar/macro_loss_predictors.pkl', "rb"))
+            if predictors.get(epoch):
+                X = np.array([max(corrects), params, parallel, cells, nodes, scale, lr_max])
+                return predictors[epoch]['b'] + np.dot(X, predictors[epoch]['m']), predictors[epoch]['95']
+        elif reductions == 2:
+            predictors = pkl.load(open('pickle_jar/micro_loss_predictors.pkl', "rb"))
+            if predictors.get(epoch):
+                up_to_corrects = [max(corrects[:i + 1]) for i in range(epoch + 1)]
+                X = np.array(up_to_corrects + [params, reductions, parallel, cells, nodes])
+                return predictors[epoch]['b'] + np.dot(X, predictors[epoch]['m']), predictors[epoch]['95']
+        return max(corrects), 0.
+    except FileNotFoundError:
+        warnings.warn("No performance predictor file found in pickle jar!")
+        return max(corrects), 0.
 
 # === BASE LEVEL TRAIN AND TEST FUNCTIONS===============================================================================
 def train(model, device, train_loader, **kwargs):
@@ -181,8 +179,16 @@ def generate(cell_matrices, data, **kwargs):
                 residual_cells=kwargs.get('residual_cells', False),
                 auxiliaries=kwargs.get('auxiliaries',[None]),
                 scale=kwargs.get('scale', 3))
-    if torch.cuda.is_available():
-        model = model.cuda()
+
+    try:
+        if torch.cuda.is_available():
+            model = model.cuda()
+    except RuntimeError as e:
+        if "CUDA" in str(e):
+            del model
+            torch.cuda.empty_cache()
+            return False
+
     scales = model.get_cell_upscale()[-1]
     params = model.get_num_params()
 
@@ -200,11 +206,6 @@ def generate(cell_matrices, data, **kwargs):
 def gen_and_validate(cell_matrices, data, **kwargs):
     train_loader, test_loader, data_shape, classes = data
     model = generate(cell_matrices, data, **kwargs)
-    params = model.get_num_params()
-    # print("{:,} params".format(params))
-    # if not (5e6 < params < 25e6) and len(kwargs['cell_types']) > 2:
-    #    print("Model outside size boundaries, terminating.")
-    #    return False
 
     # validate
     if model:
