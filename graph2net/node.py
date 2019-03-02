@@ -1,7 +1,6 @@
 from graph2net.ops import *
 from graph2net.helpers import *
 import torch
-import gc
 
 
 class Node(nn.Module):

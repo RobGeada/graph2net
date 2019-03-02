@@ -4,6 +4,7 @@ import numpy as np
 import pandas as pd
 import pickle as pkl
 import re
+import os 
 
 
 def line_format(line,add_quotes=True):
@@ -15,8 +16,7 @@ def line_format(line,add_quotes=True):
                 line = re.sub('(?<=\d)\s+',",",line)
     if "torch.utils.data" in line:
         line = line.replace("<","'").replace(">","'")
-            
-            
+
     line = line.replace("\n","").replace(" ","").replace("array","np.array").replace("\e[1m","").replace("\e[21mN","")
     if add_quotes:
         if ":" in line:
@@ -40,7 +40,8 @@ def general_stats(line,current,start_cond,end_cond,stats_str):
         else:
             stats_str += '{}'.format(line_format(line,False))
     return False,stats_str,current
-            
+
+
 def specific_stats(line,current,start_cond,end_cond,stats_str=""):
     #print(current,[(x,line,x in line) for x in end_cond])
     if start_cond in line:
@@ -63,10 +64,12 @@ def specific_stats(line,current,start_cond,end_cond,stats_str=""):
             #print("post add",stats_str)
     return False,stats_str,current
 
+
 def local_exec(exec_str):
     ldict = {}
     exec("s={}".format(exec_str),globals(),ldict)
     return ldict['s']
+
 
 def parse(last=False):
     log1 = open("logs/old_model_testbed.log","r").read()
@@ -93,6 +96,8 @@ def parse(last=False):
         general_model_stats,general_run_stats,specific_model_stats,specific_run_stats = {},{},{},{}
         #print("--LOOP ENTER--")
         for line in out.split('\n'):
+            if 'MiB' in line:
+                continue
             if line=="" or ('Loss' in line and 'Corrects' not in line and 'Epoch: 0' not in line):
                 curve_update=False
                 pass
@@ -158,6 +163,8 @@ def parse(last=False):
                 new_key='cell_matrices'
             if key=='momemtum':
                 new_key = 'momentum'
+            if key=='macro_auxillaries':
+                new_key = 'macro_auxiliaries'
             if new_key!=key:
                 stats[new_key] = stats.pop(key)
 

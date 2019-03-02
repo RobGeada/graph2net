@@ -5,28 +5,64 @@ import logging
 import matplotlib.pyplot as plt
 import pandas as pd
 import torch
+import gc
+import subprocess
 
 
 # === MODEL HELPERS ====================================================================================================
 def general_num_params(model):
+    # return number of differential parameters of input model
     return sum([np.prod(p.size()) for p in filter(lambda p: p.requires_grad, model.parameters())])
 
 
 def namer():
+    # generate random tripled-barrelled name to track evolved models
     names = open("graph2net/names.txt", "r").readlines()
     len_names = len(names)
     choices = np.random.randint(0, len_names, 3)
     return " ".join([names[i].strip() for i in choices])
 
 
+def cell_space(reductions,spacing):
+    # spaces out reductions evenly amongst spacings
+    # returns array with r repeating groups of s spaces
+    return ([0]*spacing+[1])*(reductions)
+    # return ([1]+[0]*spacing)*(reductions-1)+[1]
+
+
+# === TORCH MEMORY HELPERS =============================================================================================
+def mem_stats(human_readable=True):
+    # returns current allocated torch memory
+    if human_readable:
+        return sizeof_fmt(torch.cuda.memory_cached())
+    else:
+        return int(torch.cuda.memory_cached())
+
+def nvidia_smi():
+    p = subprocess.Popen('nvidia-smi', stdout=subprocess.PIPE)
+    msg,err = p.communicate()
+    msg = msg.decode('utf-8')
+    return [x.split()[-2] for x in msg.split("\n") if 'python' in x][0]
+
+def clean(model=None, name=None, verbose=True):
+    if verbose:
+        print('\nCleaning up at {}...'.format(name))
+        print('Pre:', mem_stats())
+    del model
+    gc.collect()
+    torch.cuda.empty_cache()
+    if verbose:
+        print('Post:', mem_stats())
+
+
 def pretty_size(size):
-    """Pretty prints a torch.Size object"""
+    # pretty prints a torch.Size object
     assert (isinstance(size, torch.Size))
     return " x ".join(map(str, size)), int(np.prod(list(map(int, size))))
 
 
 def dump_tensors(gpu_only=True):
-    """Prints a list of the Tensors being tracked by the garbage collector."""
+    # Prints a list of the Tensors being tracked by the garbage collector.
     import gc
     total_size = 0
     out = []
@@ -45,43 +81,10 @@ def dump_tensors(gpu_only=True):
         except Exception as e:
             pass
     out = pd.DataFrame(out, columns=['name', 'dim', 'size'])
-    out = out.sort_values(by='size', ascending=False)
+    out = out.groupby(["name","dim","size"]).size().reset_index(name='counts')
+    out['net_size']=out['size']*out['counts']
+    out = out.sort_values(by='net_size', ascending=False)
     return out
-
-
-def cell_space(reductions,spacing):
-    return ([1]+[0]*spacing)*(reductions-1)+[1]
-
-
-def max_model_size(cell,data):
-    from graph2net.trainers import gen_and_validate
-    cell_results = []
-
-    for scale in reversed(range(4, 9)):
-        for spacing in range(2, 6):
-            for parallel in [True, False]:
-                cell_list = [cell, cell] if parallel else [cell]
-                model, valid, reason = gen_and_validate(cell_list,
-                                                        data,
-                                                        scale=scale,
-                                                        cell_types=cell_space(5, spacing),
-                                                        verbose=False)
-
-                if valid:
-                    params = model.get_num_params()
-                    cell_results.append([scale, spacing, parallel, params])
-                del model
-                torch.cuda.empty_cache()
-            if not valid:
-                break
-        if len(cell_results) or reason == 'other':
-            break
-
-    if len(cell_results):
-        cell_results.sort(key=lambda x: (x[3], x[1]), reverse=True)
-        return cell_results[0]
-    else:
-        return False
 
 
 # === NUMPY HELPERS ====================================================================================================
@@ -104,27 +107,37 @@ def width_mod(l, by):
 
 
 def top_n(arr):
+    # return indeces that correspond to highest values of list
     return sorted(enumerate(arr),key=lambda x: x[1],reverse=True)
+
+
+def np_raw_print(arr):
+    print("= np.array([{}])".format(",\n            ".join([str([i for i in j]) for j in arr])))
+
 
 # === I/O HELPERS ======================================================================================================
 def eq_string(n):
+    # prints n equals signs, for spacing output strings
     return "=" * n
 
 
 def sizeof_fmt(num, suffix='B'):
+    # turns bytes object into human readable
     for unit in ['', 'Ki', 'Mi', 'Gi', 'Ti', 'Pi', 'Ei', 'Zi']:
         if abs(num) < 1024.0:
-            return "%3.1f%s%s" % (num, unit, suffix)
+            return "%3.2f%s%s" % (num, unit, suffix)
         num /= 1024.0
-    return "%.1f%s%s" % (num, 'Yi', suffix)
+    return "%.2f%s%s" % (num, 'Yi', suffix)
 
 
 def log_print(string, end="\n", flush=False):
+    # prints and logs given string
     print(string, end=end, flush=flush)
     logging.info(string)
 
 
 def progress_bar(n, length):
+    # creates progress bar string given progress and total goal
     n = int(10 * (n / length))
     out = ""
     out += "=" * n
@@ -133,16 +146,19 @@ def progress_bar(n, length):
 
 
 def curr_time():
+    # returns current time string
     return datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
 
 def div_remainder(n, interval):
+    # finds divisor and remainder given some n/interval
     factor = math.floor(n / interval)
     remainder = int(n - (factor * interval))
     return factor, remainder
 
 
 def show_time(seconds):
+    # show amount of time as human readable
     if seconds < 60:
         return "{:.2f} s".format(seconds)
     elif seconds < (60 * 60):
@@ -155,6 +171,7 @@ def show_time(seconds):
 
 
 def loss_plot(epochs, losses):
+    # labeled loss plot
     plt.plot(range(epochs), losses)
     plt.title("Loss Curve")
     plt.xlabel("Epochs")

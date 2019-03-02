@@ -1,5 +1,5 @@
 from graph2net.cell import Cell
-from graph2net.ops import Classifier, Identity, Single_Conv, padsize, padder
+from graph2net.ops import Classifier, MinimumIdentity, initializer
 from graph2net.helpers import *
 import sys
 import torch
@@ -30,7 +30,7 @@ class Net(nn.Module):
         powers = [(2 ** x) for x in range(scale, 20)]
         self.pre_init_dim = in_dim
         self.initializer_scale = [x for x in powers if x > self.pre_init_dim[1]][0]
-        self.initializer = padder(C_in=in_dim[1], C_out=self.initializer_scale)
+        self.initializer = initializer(c_in=in_dim[1], c_out=self.initializer_scale)
         self.post_init_dim = channel_mod(self.pre_init_dim, self.initializer_scale)
 
         # create and join cells
@@ -50,7 +50,7 @@ class Net(nn.Module):
                 sublayer.append(new_cell)
 
             stride = 2 if old_dim[2] > new_dim[2] else 1
-            self.padders.append(Identity(old_dim[1], new_dim[1], stride))
+            self.padders.append(MinimumIdentity(old_dim[1], new_dim[1], stride))
             self.layers.append(sublayer)
             cell_in_dim = new_dim
 
@@ -60,6 +60,7 @@ class Net(nn.Module):
                                                      "Auxiliary {}".format(reduction_idx))
 
         # append linear classifier after all cells
+        self.global_pooling = nn.AdaptiveAvgPool2d(cell_in_dim[1:][-1])
         self.towers['Classifier'] = Classifier(int(np.prod(cell_in_dim[1:])), classes)
 
     # find scaling ratio of component cell
@@ -69,29 +70,40 @@ class Net(nn.Module):
     def get_num_params(self):
         return general_num_params(self)
 
-    def forward(self, x, drop_path, verbose, auxillary=False, validate=False):
+    def forward(self, x, drop_path, verbose, auxiliary=False):
         # pass data through initializer
-        outputs = []
-        x = self.initializer(x)
+        try:
+            outputs = []
+            x = self.initializer(x)
 
-        # pass data through cells
-        for i, layer in enumerate(self.layers):
-            cell_out = sum([cell(x, drop_path=drop_path, verbose=verbose) for cell in layer])
-            if self.residual_cells:
-                residual = self.padders[i](x)
-                x = cell_out + residual
-                del residual
-            else:
-                x = cell_out
+            # pass data through cells
+            for i, layer in enumerate(self.layers):
+                cell_out = sum([cell(x, drop_path=drop_path, verbose=verbose) for cell in layer])
+                if self.residual_cells:
+                    residual = self.padders[i](x)
+                    x = cell_out + residual
+                    del residual
+                else:
+                    x = cell_out
 
-            if auxillary and str(i) in self.towers.keys():
-                outputs.append(self.towers[str(i)](x))
+                if auxiliary and str(i) in self.towers.keys():
+                    outputs.append(self.towers[str(i)](x))
 
-        # pass data through classifier
-        outputs.append(self.towers['Classifier'](x))
-        if verbose:
-            sys.exit()
-        return outputs if auxillary else outputs[0]
+            # pass data through classifier
+            x = self.global_pooling(x)
+            class_out = self.towers['Classifier'](x)
+            outputs.append(class_out)
+
+            if verbose:
+                sys.exit()
+            return outputs if auxiliary else outputs[0]
+        except RuntimeError as e:
+            if "CUDA" in str(e):
+                clean(verbose=False)
+            raise e
+        except KeyboardInterrupt as e:
+            clean(verbose=False)
+            raise e
 
     def minimal_print(self):
         out = "{}{:^15}{}\n".format(eq_string(50), "NETWORK CELL", eq_string(50))

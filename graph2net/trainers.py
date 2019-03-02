@@ -11,7 +11,7 @@ import torch.optim as optim
 
 from graph2net.graph_generators import show_cell
 from graph2net.net import Net
-from graph2net.helpers import log_print, show_time, curr_time, general_num_params
+from graph2net.helpers import *
 import warnings
 
 
@@ -53,13 +53,51 @@ def accuracy_prediction(epoch, corrects, params, parallel, cells, nodes, scale, 
         warnings.warn("No performance predictor file found in pickle jar!")
         return max(corrects), 0.
 
+
+# === MODEL SIZE FINDER ================================================================================================
+def max_model_size(cell, data, auxiliaries=[None]):
+    # iteratively finds the largest valid model that fits in memory for a specific cell
+    cell_results = []
+
+    for scale in reversed(range(4, 9)):
+        for spacing in range(2, 8):
+            clean(verbose=False)
+            print("=====VALIDATING {},{}======".format(scale,spacing))
+            model, valid, reason = gen_and_validate([cell],
+                                                    data,
+                                                    scale=scale,
+                                                    auxiliaries=auxiliaries,
+                                                    cell_types=cell_space(5, spacing),
+                                                    verbose=False)
+
+            if valid:
+                params = model.get_num_params()
+                cell_results.append([scale, spacing, params])
+                print("SUCCESS")
+            del model
+            clean(verbose=False)
+            if not valid:
+                print("FAIL")
+                break
+        if len(cell_results) or reason == 'other':
+            break
+    if len(cell_results):
+        cell_results.sort(key=lambda x: (x[2], x[1]), reverse=True)
+        return cell_results[0]
+    else:
+        return False
+
+
 # === BASE LEVEL TRAIN AND TEST FUNCTIONS===============================================================================
 def train(model, device, train_loader, **kwargs):
     if kwargs.get('verbose', False) and not kwargs.get('validate', False):
         log_print("=========================================================================")
+
+    #if kwargs.get('validate', False):
     model.train()
 
     for batch_idx, (data, target) in enumerate(train_loader):
+        print("Batch {} Init   | Torch Mem: {:<9} | nvidia-smi: {:<9}".format(batch_idx,mem_stats(),nvidia_smi()))
         data, target = data.to(device), target.to(device)
 
         kwargs['optimizer'].zero_grad()
@@ -68,15 +106,15 @@ def train(model, device, train_loader, **kwargs):
             drop_path = random.random() > .5
         else:
             drop_path = False
-
         outputs = model.forward(data,
                                 drop_path=drop_path,
                                 verbose=False,
-                                auxillary=True,
-                                validate=kwargs.get('validate', False))
+                                auxiliary=True)
+
         loss_f = lambda x: kwargs['criterion'](x, target)
-        discount = 1/len(outputs)
+        discount = 1 / len(outputs)
         loss = loss_f(outputs[-1]) + sum([discount * loss_f(x) for x in outputs[:-1]])
+        print("      {} pre-bw | Torch Mem: {:<9} | nvidia-smi: {:<9}".format(batch_idx,mem_stats(),nvidia_smi()))
         loss.backward()
         kwargs['optimizer'].step()
 
@@ -96,8 +134,9 @@ def train(model, device, train_loader, **kwargs):
                     len(train_loader.dataset),
                     100. * batch_idx / len(train_loader),
                     loss.item()))
-        if kwargs.get('validate', False):
+        if batch_idx>1 and kwargs.get('validate', False):
             return True
+
     if kwargs.get('verbose', False):
         print()
 
@@ -135,7 +174,7 @@ def model_validate(model, train_loader, verbose):
     if verbose:
         print("Validating model...", end="")
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    optimizer = optim.SGD(model.parameters(), lr=0, momentum=.9, weight_decay=3e-4)
+    optimizer = optim.SGD(model.parameters(), lr=0, momentum=.9, weight_decay=0)
     criterion = nn.CrossEntropyLoss()
 
     t_start = time()
@@ -147,6 +186,7 @@ def model_validate(model, train_loader, verbose):
           epoch=0,
           validate=True,
           drop_path=False,
+          aux=True,
           verbose=False)
     t_end = time()
     if verbose:
@@ -177,17 +217,18 @@ def generate(cell_matrices, data, **kwargs):
                 in_dim=data_shape,
                 classes=classes,
                 residual_cells=kwargs.get('residual_cells', False),
-                auxiliaries=kwargs.get('auxiliaries',[None]),
+                auxiliaries=kwargs.get('auxiliaries', [None]),
                 scale=kwargs.get('scale', 3))
-
     try:
         if torch.cuda.is_available():
             model = model.cuda()
     except RuntimeError as e:
         if "CUDA" in str(e):
             del model
-            torch.cuda.empty_cache()
+            clean(verbose=False)
             return False
+        else:
+            raise e
 
     scales = model.get_cell_upscale()[-1]
     params = model.get_num_params()
@@ -196,9 +237,10 @@ def generate(cell_matrices, data, **kwargs):
         print("Cell Scaling Factors:", scales)
         print(model.minimal_print())
 
-    kwargs.update({"scales": scales, 'params': params, 'cell_matrices': cell_matrices})
+    kwargs.update({"scales": scales,
+                   'params': params,
+                   'cell_matrices': cell_matrices})
     model.stats = kwargs
-
     return model
 
 
@@ -211,14 +253,21 @@ def gen_and_validate(cell_matrices, data, **kwargs):
     if model:
         try:
             model_validate(model, train_loader, verbose=kwargs.get('verbose', True))
+            model.stats['mem_size'] = mem_stats(False)
         except RuntimeError as e:
             if "CUDA" in str(e):
-                return model, False, "memory"
+                del model
+                clean(verbose=False)
+                return None, False, "memory"
+            else:
+                raise e
         except Exception as e:
-            return model, False, "other"
+            print("Exception:", e)
+            return None, False, "other"
+    else:
+        return model, False, "generation failure"
 
-    # print("Allocated: {:.2f} GB".format(torch.cuda.memory_allocated(0)/(1024**3)))
-    return model,True,None
+    return model, True, None
 
 
 # === TOP LEVEL TRAINING FUNCTION ======================================================================================
@@ -256,8 +305,8 @@ def full_model_run(model, **kwargs):
                           momentum=kwargs['momentum'],
                           weight_decay=kwargs['weight_decay'],
                           nesterov=True)
-    criterion = nn.CrossEntropyLoss()
 
+    criterion = nn.CrossEntropyLoss()
     losses, corrects, all_preds, epoch_times = [], [], [], []
     train_start = time()
     try:
@@ -290,7 +339,7 @@ def full_model_run(model, **kwargs):
             losses.append(loss)
             corrects.append(correct)
 
-            if correct <= 1000 and epoch > 5:
+            if np.mean(corrects[-5:]) == 1000 and epoch > 5:
                 if kwargs.get('log', False):
                     log_print("TERMINATED OVER-SATURATED MODEL EARLY AT EPOCH {}".format(epoch))
                 else:
@@ -309,13 +358,6 @@ def full_model_run(model, **kwargs):
             acc_preds.append(acc_pred)
             confidences.append(confidence)
 
-            # if acc_pred+confidence < 9000 and epoch>10:
-            #    if kwargs.get('log', False):
-            #        log_print("TERMINATED UNDER-PERFORMING MODEL EARLY AT EPOCH {}".format(epoch))
-            #    else:
-            #        print("Terminating under-performing model early")
-            #    return np.array(losses), np.array(corrects), np.array(all_preds), acc_preds, confidences
-
             if kwargs.get("log", False):
                 logger.info("Prediction: {}".format(int(acc_pred)))
 
@@ -333,6 +375,7 @@ def full_model_run(model, **kwargs):
                                                                                  correct_perc,
                                                                                  int(acc_pred),
                                                                                  confidence), end="\r")
+
             if kwargs['lr_schedule']['type'] == 'interval':
                 if epoch % kwargs['lr_schedule']['interval'] == 0 and epoch > 0:
                     adjust_lr(optimizer, by=kwargs['lr_schedule']['by'], verbose=kwargs.get('verbose', False))
@@ -355,13 +398,14 @@ def full_model_run(model, **kwargs):
                                  verbose=kwargs.get('verbose', False))
                 t += 1
 
-    except KeyboardInterrupt:
+    except KeyboardInterrupt as e:
         if kwargs.get('log', False):
             logger.info("TERMINATED EARLY AT EPOCH {}".format(epoch))
         if kwargs.get('verbose', False):
             print("Terminating early...")
-        raise KeyboardInterrupt
     except Exception as e:
+        del model
+        clean(verbose=False)
         raise e
 
     if kwargs.get('log', False):
